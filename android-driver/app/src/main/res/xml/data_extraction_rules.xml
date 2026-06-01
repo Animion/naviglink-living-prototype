@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- allowBackup="false" → tento soubor je pro forma; klíče v EncryptedSharedPreferences
+     se zálohovat NESMÍ, jsou vázané na zařízení. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="naviglink_keys" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="naviglink_keys" />
+    </device-transfer>
+</data-extraction-rules>

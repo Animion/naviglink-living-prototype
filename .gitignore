@@ -33,3 +33,16 @@ env/
 
 pytest-cache-files-*/
 test_live.py
+
+# Android
+*.iml
+.gradle/
+local.properties
+.idea/
+.DS_Store
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+output.json
+release/

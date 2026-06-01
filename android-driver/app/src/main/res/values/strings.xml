@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Naviglink</string>
+
+    <!-- Hlavní obrazovka -->
+    <string name="title_no_alert">Žádné aktivní upozornění</string>
+    <string name="title_alert">Upozornění!</string>
+    <string name="subtitle_check_again">Ručně zkontrolovat polohu</string>
+    <string name="loading">Načítám polohu…</string>
+
+    <!-- Akce -->
+    <string name="action_check_now">Zkontrolovat teď</string>
+    <string name="action_im_coming">Jsem na cestě</string>
+    <string name="action_cannot_move">Nemohu, nechte mě, prosím</string>
+    <string name="action_request_location">Povolit polohu</string>
+    <string name="action_request_notifications">Povolit notifikace</string>
+
+    <!-- Status -->
+    <string name="status_signing">Podepisuji a posílám…</string>
+    <string name="status_reaction_sent">Reakce odeslána</string>
+    <string name="status_error">Chyba: %1$s</string>
+
+    <!-- Foreground service -->
+    <string name="service_notification_channel">Naviglink — sledování polohy</string>
+    <string name="service_notification_title">Naviglink běží</string>
+    <string name="service_notification_text">Sleduji upozornění z Magistrátu</string>
+
+    <!-- Alert notifikace -->
+    <string name="alert_notification_channel">Naviglink — upozornění</string>
+    <string name="alert_notification_title_block_cleaning">Blokové čištění zítra</string>
+    <string name="alert_notification_text">%1$s, %2$s</string>
+
+    <!-- Permissions -->
+    <string name="permission_location_required">Naviglink potřebuje povolení k poloze, aby tě mohl varovat před úklidem.</string>
+    <string name="permission_notifications_required">Bez notifikací se o upozornění nedozvíš mimo aplikaci.</string>
+</resources>

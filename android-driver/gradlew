@@ -1,0 +1,25 @@
+#!/bin/sh
+#
+# Gradle wrapper script. Stáhne Gradle distribuci specifikovanou v
+# gradle/wrapper/gradle-wrapper.properties a spustí ji.
+#
+# Tento skript je sublimovaný — Android Studio při prvním Sync v projektu
+# vygeneruje gradle-wrapper.jar do gradle/wrapper/. Pokud spouštíš z CLI
+# bez předchozího Studio sync, můžeš nejdřív zavolat:
+#
+#   gradle wrapper --gradle-version 8.10.2
+#
+# (vyžaduje globálně nainstalované Gradle 8.x). Pak gradle-wrapper.jar
+# vznikne a tento gradlew bude funkční.
+
+APP_HOME="$( cd "$( dirname "$0" )" && pwd )"
+JAR="$APP_HOME/gradle/wrapper/gradle-wrapper.jar"
+
+if [ ! -f "$JAR" ]; then
+  echo "Chybí $JAR" >&2
+  echo "Otevři projekt v Android Studio (File → Open → vyber android-driver/)," >&2
+  echo "nebo spusť: gradle wrapper --gradle-version 8.10.2" >&2
+  exit 1
+fi
+
+exec java -jar "$JAR" "$@"
