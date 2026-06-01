@@ -5,7 +5,9 @@ import android.util.Log
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -74,6 +76,29 @@ class AlertsPollWorker(
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 UNIQUE_NAME,
                 ExistingPeriodicWorkPolicy.KEEP,
+                request,
+            )
+        }
+
+        /**
+         * Manual trigger: zařadit jeden OneTimeWorkRequest mimo periodic cycle.
+         *
+         * Použití: driver klikne "Zkontrolovat upozornění" → worker poběží do
+         * pár sekund (záleží na constraints + scheduler). Nepřepíše plánovaný
+         * periodic — používá samostatnou unique work `naviglink_alerts_oneshot`.
+         */
+        fun runOnce(context: Context) {
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+
+            val request = OneTimeWorkRequestBuilder<AlertsPollWorker>()
+                .setConstraints(constraints)
+                .build()
+
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                "naviglink_alerts_oneshot",
+                ExistingWorkPolicy.REPLACE,
                 request,
             )
         }

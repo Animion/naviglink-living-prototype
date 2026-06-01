@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import cz.naviglink.driver.NaviglinkApp
 import cz.naviglink.driver.data.SignedSubject
+import cz.naviglink.driver.work.AlertsPollWorker
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -157,6 +158,19 @@ class DriverViewModel(private val app: NaviglinkApp) : ViewModel() {
 
     fun resetToIdle() {
         _state.value = DriverUiState.Idle
+    }
+
+    /**
+     * Manuálně spusť `AlertsPollWorker` mimo periodic cycle.
+     *
+     * Pro test (rychlá validace, nečekat 15 min) i jako *trvalá feature*:
+     * driver chce kdykoli ověřit "není na mě něco vyhlášeno?".
+     *
+     * Notifikace přijde ze workeru, ne z UI — to je správně, ten flow je
+     * stejný, jako kdyby worker běžel z periodic schedule.
+     */
+    fun runAlertsCheckNow() {
+        AlertsPollWorker.runOnce(app)
     }
 
     companion object {

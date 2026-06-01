@@ -79,6 +79,7 @@ fun HomeScreen(
                 onReact = viewModel::reactToAlert,
                 onReset = viewModel::resetToIdle,
                 onSendParkSnapshot = { viewModel.sendParkSnapshot() },
+                onRunAlertsWorker = viewModel::runAlertsCheckNow,
                 onRequestLocation = onRequestLocationPermission,
                 onRequestNotifications = onRequestNotificationPermission,
             )
@@ -114,6 +115,7 @@ private fun StateContent(
     onReact: (String, String) -> Unit,
     onReset: () -> Unit,
     onSendParkSnapshot: () -> Unit,
+    onRunAlertsWorker: () -> Unit,
     onRequestLocation: () -> Unit,
     onRequestNotifications: () -> Unit,
 ) {
@@ -128,7 +130,7 @@ private fun StateContent(
         is DriverUiState.SendingReaction -> Working("Posílám reakci…")
         is DriverUiState.ReactionSent -> ReactionSentPane(state.reaction, onReset)
         is DriverUiState.SendingParkSnapshot -> Working("Posílám polohu…")
-        is DriverUiState.ParkSnapshotSent -> ParkSnapshotSentPane(state, onReset)
+        is DriverUiState.ParkSnapshotSent -> ParkSnapshotSentPane(state, onRunAlertsWorker, onReset)
         is DriverUiState.Error -> ErrorPane(state.message, onCheckNow)
     }
 }
@@ -193,7 +195,11 @@ private fun NoAlertPane(onCheckNow: () -> Unit, onSendParkSnapshot: () -> Unit) 
 }
 
 @Composable
-private fun ParkSnapshotSentPane(state: DriverUiState.ParkSnapshotSent, onReset: () -> Unit) {
+private fun ParkSnapshotSentPane(
+    state: DriverUiState.ParkSnapshotSent,
+    onRunAlertsWorker: () -> Unit,
+    onReset: () -> Unit,
+) {
     Text(
         text = "✓ Poloha uložena",
         fontSize = 28.sp,
@@ -216,6 +222,8 @@ private fun ParkSnapshotSentPane(state: DriverUiState.ParkSnapshotSent, onReset:
         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
     )
     Spacer(Modifier.height(40.dp))
+    BigButton(text = "Zkontrolovat upozornění teď", onClick = onRunAlertsWorker)
+    Spacer(Modifier.height(12.dp))
     OutlinedButton(
         onClick = onReset,
         modifier = Modifier.fillMaxWidth().height(56.dp),
