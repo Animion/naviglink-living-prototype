@@ -1,0 +1,9 @@
+[
+  "tests/test_signed_subject.py::test_audit_log_finds_referencing",
+  "tests/test_signed_subject.py::test_content_addressed_id",
+  "tests/test_signed_subject.py::test_keypair_and_sign_verify",
+  "tests/test_signed_subject.py::test_query_active_at",
+  "tests/test_signed_subject.py::test_revocation_filters_out",
+  "tests/test_signed_subject.py::test_store_put_and_get",
+  "tests/test_signed_subject.py::test_tamper_detection"
+]

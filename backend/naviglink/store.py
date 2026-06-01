@@ -148,6 +148,43 @@ class Store:
             ).fetchall()
         return [_row_to_subject(r) for r in rows]
 
+    def list(
+        self,
+        author: Optional[str] = None,
+        kind: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[SignedSubject]:
+        """List subjektů s volitelnými filtry.
+
+        - author: hex public key autora; SQL hledá podřetězec v JSON pole authors
+        - kind: filtr přes kind
+        - limit/offset: paginace, default 100/0
+
+        Vrací subjekty seřazené sestupně podle received_at (nejnovější první) —
+        konzistentní s UI očekáváním "Mé poslední vyhlášené subjekty".
+        """
+        clauses = []
+        params: list = []
+        if author:
+            # JSON pole `authors` je seznam stringů; hledáme substring s uvozovkami
+            # aby '"abcd"' nepřibližně neshodoval s '"abcdef"'.
+            clauses.append("authors LIKE ?")
+            params.append(f'%"{author}"%')
+        if kind:
+            clauses.append("kind = ?")
+            params.append(kind)
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        params.extend([limit, offset])
+
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM subjects{where} "
+                f"ORDER BY received_at DESC LIMIT ? OFFSET ?",
+                params,
+            ).fetchall()
+        return [_row_to_subject(r) for r in rows]
+
     def find_referencing(self, target_id: str,
                           role: Optional[str] = None) -> list[SignedSubject]:
         """Najdi subjekty, které odkazují na target_id (volitelně v dané roli)."""

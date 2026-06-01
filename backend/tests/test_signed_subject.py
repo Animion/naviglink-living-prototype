@@ -165,6 +165,89 @@ def test_revocation_filters_out(tmp_path):
     assert len(matches) == 1
 
 
+def test_list_by_author(tmp_path):
+    """store.list(author=...) vrátí jen subjekty podepsané daným autorem."""
+    store = Store(tmp_path / "test.db")
+
+    # Dva autoři, každý vyhlásí jeden subjekt
+    pub_a, priv_a = generate_keypair()
+    pub_b, priv_b = generate_keypair()
+
+    s_a = _make_blokove_cisteni(priv_a, pub_a)
+    s_b = _make_blokove_cisteni(priv_b, pub_b)
+    store.put(s_a)
+    store.put(s_b)
+
+    a_only = store.list(author=pub_a)
+    assert len(a_only) == 1
+    assert a_only[0].id == s_a.id
+
+    b_only = store.list(author=pub_b)
+    assert len(b_only) == 1
+    assert b_only[0].id == s_b.id
+
+    all_subjects = store.list()
+    assert len(all_subjects) == 2
+
+
+def test_list_by_kind(tmp_path):
+    """store.list(kind=...) vrátí jen subjekty daného typu."""
+    store = Store(tmp_path / "test.db")
+    pub_hex, priv = generate_keypair()
+
+    subj = _make_blokove_cisteni(priv, pub_hex)
+    store.put(subj)
+
+    # Plus claim k tomuto subjektu
+    claim = SignedSubject(
+        id="placeholder", kind="claim",
+        authors=[pub_hex], signatures=[],
+        valid_from=datetime(2026, 6, 9, 8, 0, tzinfo=timezone.utc),
+        references={"about": subj.id},
+        payload={"state": "v_probehu"},
+    )
+    canon = claim.canonical_payload()
+    sig = sign_with(priv, canon)
+    claim = claim.model_copy(update={"id": compute_id(canon), "signatures": [sig]})
+    store.put(claim)
+
+    subjects_only = store.list(kind="subject")
+    assert len(subjects_only) == 1
+    assert subjects_only[0].kind == "subject"
+
+    claims_only = store.list(kind="claim")
+    assert len(claims_only) == 1
+    assert claims_only[0].kind == "claim"
+
+
+def test_list_pagination(tmp_path):
+    """limit + offset funguje."""
+    store = Store(tmp_path / "test.db")
+    pub_hex, priv = generate_keypair()
+
+    # Vyhlásit 5 subjektů (s drobně odlišnými časy aby měly různá ID)
+    for hour in range(5, 10):
+        subj = SignedSubject(
+            id="placeholder", kind="subject",
+            authors=[pub_hex], signatures=[],
+            valid_from=datetime(2026, 6, 9, hour, 0, tzinfo=timezone.utc),
+            valid_to=datetime(2026, 6, 9, hour + 1, 0, tzinfo=timezone.utc),
+            references={"domain": "traffic_cz"},
+            payload={"typ": "blokove_cisteni", "ulice": f"ulice-{hour}",
+                     "geometry": VEVERI_POLYGON},
+        )
+        canon = subj.canonical_payload()
+        sig = sign_with(priv, canon)
+        subj = subj.model_copy(update={"id": compute_id(canon), "signatures": [sig]})
+        store.put(subj)
+
+    first_two = store.list(limit=2)
+    next_two = store.list(limit=2, offset=2)
+    assert len(first_two) == 2
+    assert len(next_two) == 2
+    assert first_two[0].id != next_two[0].id
+
+
 def test_audit_log_finds_referencing(tmp_path):
     """Audit log najde subjekt sám i to, co na něj odkazuje."""
     store = Store(tmp_path / "test.db")

@@ -99,6 +99,31 @@ def get_subject(subject_id: str) -> SignedSubject:
     return s
 
 
+@app.get("/subjects")
+def list_subjects(
+    author: Optional[str] = Query(None, description="Hex public key autora"),
+    kind: Optional[str] = Query(None, description="Filter by kind"),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+) -> dict:
+    """List subjektů s volitelnými filtry.
+
+    Použití:
+      - GET /subjects?author=<hex>   → všechny subjekty autora (např. seznam
+        vyhlášených blokových čištění magistrátu pro overlay v admin mapě)
+      - GET /subjects?kind=subject   → všechny subjekty typu "subject"
+      - GET /subjects?kind=claim&author=<hex>  → reakce konkrétního řidiče
+
+    Vrací paginovaný seznam seřazený sestupně podle času přijetí (nejnovější první).
+    """
+    subjects = store.list(author=author, kind=kind, limit=limit, offset=offset)
+    return {
+        "filter": {"author": author, "kind": kind, "limit": limit, "offset": offset},
+        "count": len(subjects),
+        "subjects": [s.model_dump(mode="json") for s in subjects],
+    }
+
+
 @app.get("/query")
 def query_active(
     lon: float = Query(..., description="GPS longitude (WGS84)"),

@@ -461,32 +461,13 @@
   }
 
   async function apiListMine(pubHex) {
-    // Backend zatím nemá /subjects?author=... endpoint; uložíme si lokálně,
-    // ale `Obnovit ze serveru` udělá GET na /audit/{id} pro každý uložený ID.
-    // Pro varianta C MVP používáme localStorage cache.
-    const cached = JSON.parse(localStorage.getItem('naviglink_my_subjects') || '[]');
-    const refreshed = [];
-    for (const item of cached) {
-      try {
-        const r = await fetch(`${API_HOST}/audit/${item.id}`);
-        if (r.ok) {
-          const d = await r.json();
-          if (d.count > 0) refreshed.push(item);
-        }
-      } catch (e) { /* ignore */ }
-    }
-    return refreshed;
-  }
-
-  function cacheMySubject(subject, ulice, validFrom, validTo) {
-    const cached = JSON.parse(localStorage.getItem('naviglink_my_subjects') || '[]');
-    cached.unshift({
-      id: subject.id,
-      ulice: ulice,
-      from: validFrom.toISOString(),
-      to: validTo.toISOString(),
-    });
-    localStorage.setItem('naviglink_my_subjects', JSON.stringify(cached.slice(0, 20)));
+    // GET /subjects?author=<pubHex>&kind=subject — server vrátí plné SignedSubject
+    // objekty včetně geometry, takže můžeme překreslit polygony na mapě.
+    const url = `${API_HOST}/subjects?author=${encodeURIComponent(pubHex)}&kind=subject&limit=50`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`GET /subjects → ${r.status}`);
+    const d = await r.json();
+    return d.subjects;  // pole plných SignedSubject
   }
 
   // ===========================================================================
@@ -578,7 +559,7 @@
   document.getElementById('btnResetKeys').addEventListener('click', () => {
     if (!confirm('Smazat klíče a vytvořit novou identitu? Budoucí dotazy nebudou identifikovat vás jako autora předchozích subjektů.')) return;
     localStorage.removeItem(KEY_STORAGE);
-    localStorage.removeItem('naviglink_my_subjects');
+    localStorage.removeItem('naviglink_my_subjects'); // legacy klíč z v1
     location.reload();
   });
 
@@ -621,7 +602,6 @@
       const result = await apiPostSubject(subject);
       console.log('Server response:', result);
 
-      cacheMySubject(subject, ulice, validFrom, validTo);
       document.getElementById('drawStatus').textContent =
         `Vyhlášeno: ${ulice}, ID ${subject.id.slice(0, 30)}…`;
       document.getElementById('drawStatus').className = 'status success';
@@ -642,6 +622,10 @@
   async function refreshSubjectsList() {
     const list = document.getElementById('subjectsList');
     list.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">Načítám…</div>';
+
+    // Vyčistit existující publikované polygony z mapy a překreslit znovu.
+    publishedLayer.clearLayers();
+
     try {
       const subjects = await apiListMine(pubHex);
       if (subjects.length === 0) {
@@ -650,14 +634,19 @@
       }
       list.innerHTML = '';
       for (const s of subjects) {
+        // Karta v seznamu
+        const ulice = s.payload?.ulice || '(bez popisu)';
         const div = document.createElement('div');
         div.className = 'subject-card';
         div.innerHTML = `
-          <div class="ulice">${escapeHtml(s.ulice)}</div>
-          <div class="time">${new Date(s.from).toLocaleString('cs-CZ')} → ${new Date(s.to).toLocaleString('cs-CZ')}</div>
+          <div class="ulice">${escapeHtml(ulice)}</div>
+          <div class="time">${new Date(s.valid_from).toLocaleString('cs-CZ')} → ${new Date(s.valid_to).toLocaleString('cs-CZ')}</div>
           <div class="id">${escapeHtml(s.id)}</div>
         `;
         list.appendChild(div);
+
+        // Polygon na mapě
+        showPublishedSubject(s);
       }
     } catch (e) {
       list.innerHTML = `<div style="color:var(--danger);font-size:13px;">Chyba: ${escapeHtml(e.message)}</div>`;
