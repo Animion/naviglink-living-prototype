@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: naviglink-backend
+    runtime: python
+    plan: free
+    region: frankfurt   # EU pro GDPR/ZKB compliance
+    pythonVersion: "3.11"
+    buildCommand: "pip install -e ."
+    startCommand: "uvicorn naviglink.app:app --host 0.0.0.0 --port $PORT"
+    healthCheckPath: /healthz
+    envVars:
+      - key: NAVIGLINK_DB
+        value: /tmp/naviglink.db   # ephemeral; pro pilot OK, pro produkci persistent disk
+      - key: PYTHONUNBUFFERED
+        value: "1"
