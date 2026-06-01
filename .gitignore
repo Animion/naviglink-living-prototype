@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.eggs/
+build/
+dist/
+*.egg
+
+# Naviglink runtime
+*.db
+*.db-journal
+naviglink.db
+
+# Virtualenv
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Secrets (nikdy commitovat)
+*.pem
+*.key
+.env
+.env.local
