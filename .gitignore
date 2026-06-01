@@ -30,3 +30,6 @@ env/
 *.key
 .env
 .env.local
+
+pytest-cache-files-*/
+test_live.py
