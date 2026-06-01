@@ -23,15 +23,23 @@ from pydantic import BaseModel, Field
 
 from .model import SignedSubject
 from .identifier import compute_id, verify_id
-from .store import Store
 
 
 # ---------------------------------------------------------------------------
-# App + storage
+# App + storage (SQLite pro lokální dev, PostgreSQL pro Render produkční)
 # ---------------------------------------------------------------------------
 
-DB_PATH = os.environ.get("NAVIGLINK_DB", "naviglink.db")
-store = Store(DB_PATH)
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+if DATABASE_URL:
+    from .store_postgres import PostgresStore
+    store = PostgresStore(DATABASE_URL)
+    _STORAGE_BACKEND = "postgresql"
+else:
+    from .store import Store
+    DB_PATH = os.environ.get("NAVIGLINK_DB", "naviglink.db")
+    store = Store(DB_PATH)
+    _STORAGE_BACKEND = "sqlite"
 
 app = FastAPI(
     title="Naviglink",
@@ -53,7 +61,7 @@ app.add_middleware(
 
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
-    return {"status": "ok", "version": app.version}
+    return {"status": "ok", "version": app.version, "storage": _STORAGE_BACKEND}
 
 
 class SubmitResponse(BaseModel):
