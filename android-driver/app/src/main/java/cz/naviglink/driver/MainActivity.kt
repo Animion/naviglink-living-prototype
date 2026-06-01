@@ -1,6 +1,7 @@
 package cz.naviglink.driver
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -43,11 +44,29 @@ class MainActivity : ComponentActivity() {
 
         // Při startu okamžitě požádat o location, pokud chybí
         if (!hasLocationPermission()) requestLocation()
+
+        // Pokud nás otevřela notifikace s deep linkem naviglink://alert/<id>,
+        // rovnou spustíme check, aby driver viděl detail bez dalšího kliku.
+        handleAlertIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleAlertIntent(intent)
     }
 
     override fun onResume() {
         super.onResume()
         viewModel.onResume()
+    }
+
+    private fun handleAlertIntent(intent: Intent?) {
+        val data = intent?.data ?: return
+        if (data.scheme != "naviglink" || data.host != "alert") return
+        // Pro pilot stačí spustit běžný check; konkrétní subject_id v cestě
+        // (data.lastPathSegment) je k dispozici pro pozdější iteraci.
+        if (hasLocationPermission()) viewModel.checkNow()
     }
 
     private fun hasLocationPermission(): Boolean =

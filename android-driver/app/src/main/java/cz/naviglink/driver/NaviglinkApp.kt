@@ -7,6 +7,7 @@ import android.os.Build
 import cz.naviglink.driver.crypto.NaviglinkKeystore
 import cz.naviglink.driver.data.LocationRepository
 import cz.naviglink.driver.data.NaviglinkClient
+import cz.naviglink.driver.work.AlertsPollWorker
 
 /**
  * Application singleton — drží instance core komponent.
@@ -23,6 +24,7 @@ class NaviglinkApp : Application() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannels()
+        AlertsPollWorker.schedule(this)
     }
 
     private fun createNotificationChannels() {

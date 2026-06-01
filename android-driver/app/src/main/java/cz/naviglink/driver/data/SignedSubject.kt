@@ -53,3 +53,22 @@ data class SubmitResponse(
     val verified: Boolean,
     val stored: Boolean,
 )
+
+/**
+ * Response z `GET /alerts?author=<pubhex>`.
+ *
+ * Backend najde latest `park_snapshot` driveru a vrátí seznam subjektů, které
+ * pokrývají jeho parkovanou polohu právě teď. `reason` je vyplněn, když není
+ * snapshot (nebo vypršel) — pak `alerts` je prázdné a UI nezobrazuje notifikaci.
+ */
+@Serializable
+data class AlertsResponse(
+    val author: String,
+    @SerialName("park_snapshot")
+    val parkSnapshot: SignedSubject? = null,
+    @SerialName("checked_at")
+    val checkedAt: String? = null,
+    val alerts: List<SignedSubject> = emptyList(),
+    val count: Int = 0,
+    val reason: String? = null,
+)

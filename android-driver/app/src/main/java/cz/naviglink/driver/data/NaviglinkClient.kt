@@ -75,6 +75,53 @@ class NaviglinkClient(
     }
 
     /**
+     * Pošli podepsaný park_snapshot — driver oznamuje "tady jsem zaparkoval".
+     *
+     * Server uloží snapshot a od této chvíle, když přijde nový subjekt
+     * (např. blokové čištění) pokrývající tu polohu, /alerts ho driverovi vrátí.
+     *
+     * Privacy: posíláme jen jednu polohu v moment parkování, ne kontinuální track.
+     *
+     * @param lon  longitude
+     * @param lat  latitude
+     * @param validForHours  jak dlouho snapshot platí (default 12 h — typické noční parkování)
+     */
+    suspend fun submitParkSnapshot(
+        lon: Double,
+        lat: Double,
+        validForHours: Long = 12,
+    ): SubmitResponse {
+        val now = Instant.now()
+        val validUntil = now.plusSeconds(validForHours * 3600)
+        val payload = buildJsonObject {
+            put("lon", lon)
+            put("lat", lat)
+            put("valid_until", validUntil.toIsoStringPython())
+        }
+        return signAndPost(
+            kind = "park_snapshot",
+            validFrom = now,
+            validTo = validUntil,
+            references = emptyMap(),
+            payload = payload,
+        )
+    }
+
+    /**
+     * Proaktivní check — server vyhodnotí, jestli na poloze posledního
+     * park_snapshot probíhá (nebo se chystá) nějaký subjekt.
+     *
+     * Pokud `alerts` je prázdné, klient nic neukazuje. Když má počet > 0,
+     * worker zobrazí heads-up notifikaci.
+     */
+    suspend fun getAlerts(): AlertsResponse {
+        val r = http.get("$baseUrl/alerts") {
+            parameter("author", keystore.publicKeyHex)
+        }
+        return r.body<AlertsResponse>()
+    }
+
+    /**
      * Driver reakce: podepiš claim "jsem na cestě" / "nemohu" o daném subjektu.
      *
      * Tvar claim:

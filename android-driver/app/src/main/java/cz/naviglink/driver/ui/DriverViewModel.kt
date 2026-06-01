@@ -33,6 +33,12 @@ sealed interface DriverUiState {
     ) : DriverUiState
     data object SendingReaction : DriverUiState
     data class ReactionSent(val reaction: String) : DriverUiState
+    data object SendingParkSnapshot : DriverUiState
+    data class ParkSnapshotSent(
+        val lon: Double,
+        val lat: Double,
+        val validForHours: Long,
+    ) : DriverUiState
     data class Error(val message: String) : DriverUiState
 }
 
@@ -87,6 +93,47 @@ class DriverViewModel(private val app: NaviglinkApp) : ViewModel() {
                 }
             } catch (e: Exception) {
                 _state.value = DriverUiState.Error("Server: ${e.message ?: "neznámá chyba"}")
+            }
+        }
+    }
+
+    /**
+     * Oznám "Zaparkováno tady" — vezme aktuální polohu, podepíše park_snapshot,
+     * pošle backendu. Od této chvíle bude WorkManager periodicky volat /alerts
+     * a notifikovat o subjektech pokrývajících tuto polohu.
+     *
+     * @param validForHours  jak dlouho snapshot platí (default 12 h — typické
+     *                       noční parkování). Po vypršení backend `/alerts`
+     *                       vrátí prázdno až do dalšího `sendParkSnapshot`.
+     */
+    fun sendParkSnapshot(validForHours: Long = 12) {
+        if (!app.location.hasPermission()) {
+            _state.value = DriverUiState.NeedsLocationPermission
+            return
+        }
+        viewModelScope.launch {
+            _state.value = DriverUiState.CheckingLocation
+            val loc = app.location.currentLocation()
+            if (loc == null) {
+                _state.value = DriverUiState.Error("Nedostupná poloha. Zkus to znovu venku.")
+                return@launch
+            }
+            _state.value = DriverUiState.SendingParkSnapshot
+            try {
+                val result = app.client.submitParkSnapshot(
+                    lon = loc.longitude,
+                    lat = loc.latitude,
+                    validForHours = validForHours,
+                )
+                if (result.verified && result.stored) {
+                    _state.value = DriverUiState.ParkSnapshotSent(
+                        loc.longitude, loc.latitude, validForHours
+                    )
+                } else {
+                    _state.value = DriverUiState.Error("Server park_snapshot nepřijal")
+                }
+            } catch (e: Exception) {
+                _state.value = DriverUiState.Error("park_snapshot: ${e.message ?: "neznámá chyba"}")
             }
         }
     }

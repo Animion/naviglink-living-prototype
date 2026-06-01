@@ -78,6 +78,7 @@ fun HomeScreen(
                 onCheckNow = viewModel::checkNow,
                 onReact = viewModel::reactToAlert,
                 onReset = viewModel::resetToIdle,
+                onSendParkSnapshot = { viewModel.sendParkSnapshot() },
                 onRequestLocation = onRequestLocationPermission,
                 onRequestNotifications = onRequestNotificationPermission,
             )
@@ -112,25 +113,28 @@ private fun StateContent(
     onCheckNow: () -> Unit,
     onReact: (String, String) -> Unit,
     onReset: () -> Unit,
+    onSendParkSnapshot: () -> Unit,
     onRequestLocation: () -> Unit,
     onRequestNotifications: () -> Unit,
 ) {
     when (state) {
-        is DriverUiState.Idle -> IdlePane(onCheckNow)
+        is DriverUiState.Idle -> IdlePane(onCheckNow, onSendParkSnapshot)
         is DriverUiState.NeedsLocationPermission ->
             NeedsPermissionPane("Pro zjištění upozornění je potřeba povolit polohu.", onRequestLocation)
         is DriverUiState.CheckingLocation -> Working("Zjišťuji polohu…")
         is DriverUiState.Querying -> Working("Hledám upozornění…")
-        is DriverUiState.NoAlert -> NoAlertPane(onCheckNow)
+        is DriverUiState.NoAlert -> NoAlertPane(onCheckNow, onSendParkSnapshot)
         is DriverUiState.Alert -> AlertPane(state, onReact)
         is DriverUiState.SendingReaction -> Working("Posílám reakci…")
         is DriverUiState.ReactionSent -> ReactionSentPane(state.reaction, onReset)
+        is DriverUiState.SendingParkSnapshot -> Working("Posílám polohu…")
+        is DriverUiState.ParkSnapshotSent -> ParkSnapshotSentPane(state, onReset)
         is DriverUiState.Error -> ErrorPane(state.message, onCheckNow)
     }
 }
 
 @Composable
-private fun IdlePane(onCheckNow: () -> Unit) {
+private fun IdlePane(onCheckNow: () -> Unit, onSendParkSnapshot: () -> Unit) {
     Text(
         text = "Připraveno.",
         fontSize = 24.sp,
@@ -146,10 +150,24 @@ private fun IdlePane(onCheckNow: () -> Unit) {
     )
     Spacer(Modifier.height(40.dp))
     BigButton(text = "Zkontrolovat teď", onClick = onCheckNow)
+    Spacer(Modifier.height(12.dp))
+    OutlinedButton(
+        onClick = onSendParkSnapshot,
+        modifier = Modifier.fillMaxWidth().height(56.dp),
+    ) {
+        Text("Zaparkováno tady", fontSize = 16.sp)
+    }
+    Spacer(Modifier.height(8.dp))
+    Text(
+        text = "Po stisknutí ti přijde notifikace, pokud se na tomto místě objeví blokové čištění nebo jiné omezení.",
+        fontSize = 12.sp,
+        textAlign = TextAlign.Center,
+        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
+    )
 }
 
 @Composable
-private fun NoAlertPane(onCheckNow: () -> Unit) {
+private fun NoAlertPane(onCheckNow: () -> Unit, onSendParkSnapshot: () -> Unit) {
     Text(
         text = "✓ Bez upozornění",
         fontSize = 28.sp,
@@ -164,11 +182,45 @@ private fun NoAlertPane(onCheckNow: () -> Unit) {
         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
     )
     Spacer(Modifier.height(40.dp))
+    BigButton(text = "Zaparkováno tady", onClick = onSendParkSnapshot)
+    Spacer(Modifier.height(12.dp))
     OutlinedButton(
         onClick = onCheckNow,
         modifier = Modifier.fillMaxWidth().height(56.dp),
     ) {
         Text("Zkontrolovat znovu", fontSize = 16.sp)
+    }
+}
+
+@Composable
+private fun ParkSnapshotSentPane(state: DriverUiState.ParkSnapshotSent, onReset: () -> Unit) {
+    Text(
+        text = "✓ Poloha uložena",
+        fontSize = 28.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = Color(0xFF2D8050),
+        textAlign = TextAlign.Center,
+    )
+    Spacer(Modifier.height(12.dp))
+    Text(
+        text = "Pokud se v této oblasti objeví blokové čištění (nebo jiné omezení) v nejbližších ${state.validForHours} h, přijde ti notifikace.",
+        fontSize = 14.sp,
+        textAlign = TextAlign.Center,
+        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f),
+    )
+    Spacer(Modifier.height(8.dp))
+    Text(
+        text = "%.5f, %.5f".format(state.lat, state.lon),
+        fontSize = 12.sp,
+        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
+    )
+    Spacer(Modifier.height(40.dp))
+    OutlinedButton(
+        onClick = onReset,
+        modifier = Modifier.fillMaxWidth().height(56.dp),
+    ) {
+        Text("Zpět", fontSize = 16.sp)
     }
 }
 
