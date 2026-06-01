@@ -4,7 +4,10 @@ Endpointy:
   GET  /healthz                       — basic health check
   POST /subjects                      — přijmi podepsaný SignedSubject
   GET  /subjects/{id}                 — najdi podle ID
+  GET  /subjects?author=&kind=        — list s filtry
   GET  /query?lon=&lat=&at=&kind=    — co platí na souřadnici v čase
+  GET  /alerts?author=<pubhex>        — proaktivně: subjekty na poloze
+                                        latest park_snapshot daného driveru
   GET  /audit/{id}                    — vše, co subject_id zmiňuje
 
 Žádný auth middleware — autentizace je v podpisech samotných SignedSubject.
@@ -157,6 +160,75 @@ def query_active(
         },
         "matches": [s.model_dump(mode="json") for s in subjects],
         "count": len(subjects),
+    }
+
+
+@app.get("/alerts")
+def alerts_for_driver(
+    author: str = Query(..., description="Hex public key driveru"),
+) -> dict:
+    """Proaktivní notifikace: subjekty na poloze posledního park_snapshot.
+
+    Postup:
+      1) Najdi latest `park_snapshot` od `author` (zaparkovaná poloha driveru)
+      2) Pokud existuje a `valid_until` v payloadu ještě nevypršel:
+         → query_active_at(lon, lat, now, kind="subject")
+      3) Vrať seznam aktivních (nebo právě nastávajících) subjektů
+
+    Driver app to volá periodicky (WorkManager ~30 min) a pokud `alerts` má
+    nenulový obsah, zobrazí heads-up notifikaci.
+
+    Privacy: driver pošle polohu jen když zaparkuje (explicit consent), ne
+    kontinuální tracking. Server zná "kde je auto teď", ne kudy jezdilo.
+    """
+    snapshots = store.list(author=author, kind="park_snapshot", limit=1)
+    if not snapshots:
+        return {
+            "author": author,
+            "park_snapshot": None,
+            "alerts": [],
+            "reason": "no_park_snapshot",
+        }
+
+    ps = snapshots[0]
+    payload = ps.payload or {}
+    lon = payload.get("lon")
+    lat = payload.get("lat")
+
+    if lon is None or lat is None:
+        return {
+            "author": author,
+            "park_snapshot": ps.model_dump(mode="json"),
+            "alerts": [],
+            "reason": "park_snapshot_missing_coords",
+        }
+
+    now = datetime.now(timezone.utc)
+
+    valid_until_str = payload.get("valid_until")
+    if valid_until_str:
+        try:
+            vu = datetime.fromisoformat(str(valid_until_str).replace("Z", "+00:00"))
+            if vu.tzinfo is None:
+                vu = vu.replace(tzinfo=timezone.utc)
+            if now > vu:
+                return {
+                    "author": author,
+                    "park_snapshot": ps.model_dump(mode="json"),
+                    "alerts": [],
+                    "reason": "park_snapshot_expired",
+                    "checked_at": now.isoformat(),
+                }
+        except (ValueError, TypeError):
+            pass
+
+    matches = store.query_active_at(float(lon), float(lat), now, kind="subject")
+    return {
+        "author": author,
+        "park_snapshot": ps.model_dump(mode="json"),
+        "checked_at": now.isoformat(),
+        "alerts": [s.model_dump(mode="json") for s in matches],
+        "count": len(matches),
     }
 
 
