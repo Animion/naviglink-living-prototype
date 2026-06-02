@@ -252,6 +252,50 @@ class PostgresStore:
         revoked_ids = self._revoked_ids_at(matched, at_utc)
         return [s for s in matched if s.id not in revoked_ids]
 
+    def query_in_range(
+        self,
+        lon: float,
+        lat: float,
+        at_from: datetime,
+        at_to: datetime,
+        kind: Optional[str] = None,
+    ) -> list[SignedSubject]:
+        """Subjekty s overlapem mezi [valid_from, valid_to] a [at_from, at_to].
+
+        Použití: public dashboard (`/upcoming`) chce *"co platí teď nebo začne
+        v příštích N dnech"*. Filtruje point-in-polygon a vylučuje revokované
+        (k času `at_to` — pokud byla revokace vyhlášena před koncem okna).
+
+        Vrací chronologicky seřazené podle `valid_from` ascending.
+        """
+        at_from_utc = _ensure_utc(at_from)
+        at_to_utc = _ensure_utc(at_to)
+        bbox_clause = (
+            "(bbox_min_lon IS NULL OR (bbox_min_lon <= %s AND bbox_max_lon >= %s "
+            "AND bbox_min_lat <= %s AND bbox_max_lat >= %s))"
+        )
+        # Overlap: subjekt začíná před koncem okna A končí po začátku okna
+        time_clause = "valid_from <= %s AND (valid_to IS NULL OR valid_to > %s)"
+        kind_clause = ""
+        params = [lon, lon, lat, lat, at_to_utc, at_from_utc]
+        if kind:
+            kind_clause = " AND kind = %s"
+            params.append(kind)
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT * FROM subjects WHERE {bbox_clause} AND {time_clause}{kind_clause} "
+                    f"ORDER BY valid_from ASC",
+                    params,
+                )
+                rows = cur.fetchall()
+                cols = [c.name for c in cur.description] if cur.description else []
+
+        candidates = [_row_to_subject(cols, r) for r in rows]
+        matched = [s for s in candidates if _point_in_subject_geometry(s, lon, lat)]
+        revoked_ids = self._revoked_ids_at(matched, at_to_utc)
+        return [s for s in matched if s.id not in revoked_ids]
+
     def _revoked_ids_at(
         self, subjects: list[SignedSubject], at_utc: datetime
     ) -> set[str]:

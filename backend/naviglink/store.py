@@ -247,6 +247,40 @@ class Store:
         revoked_ids = self._revoked_ids_at(matched, at)
         return [s for s in matched if s.id not in revoked_ids]
 
+    def query_in_range(
+        self,
+        lon: float,
+        lat: float,
+        at_from: datetime,
+        at_to: datetime,
+        kind: Optional[str] = None,
+    ) -> list[SignedSubject]:
+        """Subjekty s overlapem mezi [valid_from, valid_to] a [at_from, at_to].
+
+        Použití: public dashboard (`/upcoming`) chce *"co platí teď nebo začne
+        v příštích N dnech"*. Vrací chronologicky seřazené podle `valid_from`.
+        """
+        at_from_iso = _iso(at_from)
+        at_to_iso = _iso(at_to)
+        bbox_clause = "(bbox_min_lon IS NULL OR (bbox_min_lon <= ? AND bbox_max_lon >= ? AND bbox_min_lat <= ? AND bbox_max_lat >= ?))"
+        time_clause = "valid_from <= ? AND (valid_to IS NULL OR valid_to > ?)"
+        kind_clause = ""
+        params = [lon, lon, lat, lat, at_to_iso, at_from_iso]
+        if kind:
+            kind_clause = " AND kind = ?"
+            params.append(kind)
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM subjects WHERE {bbox_clause} AND {time_clause}{kind_clause} "
+                f"ORDER BY valid_from ASC",
+                params,
+            ).fetchall()
+
+        candidates = [_row_to_subject(r) for r in rows]
+        matched = [s for s in candidates if _point_in_subject_geometry(s, lon, lat)]
+        revoked_ids = self._revoked_ids_at(matched, at_to)
+        return [s for s in matched if s.id not in revoked_ids]
+
     def _revoked_ids_at(self, subjects: list[SignedSubject],
                          at: datetime) -> set[str]:
         """Najdi IDs, která jsou revokovaná v čase `at`.

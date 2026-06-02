@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Naviglink — Magistrát Brno</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin="">
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --bg-panel: #ffffff;
+    --text: #1a1d24;
+    --text-muted: #5b6373;
+    --accent: #1e6091;
+    --accent-hover: #164a73;
+    --success: #2d8050;
+    --danger: #b03030;
+    --border: #d8dde6;
+    --shadow: 0 1px 3px rgba(0,0,0,.04), 0 2px 8px rgba(0,0,0,.06);
+    --radius: 6px;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
+    line-height: 1.5;
+    display: grid;
+    grid-template-rows: auto 1fr;
+    height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: var(--shadow);
+    z-index: 1000;
+  }
+  header h1 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -.01em;
+  }
+  header h1 .sub {
+    color: var(--text-muted);
+    font-weight: 400;
+    margin-left: 8px;
+  }
+  .identity {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .identity .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--success);
+    display: inline-block;
+  }
+  main {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    height: 100%;
+    overflow: hidden;
+  }
+  #map {
+    height: 100%;
+    width: 100%;
+  }
+  .sidebar {
+    background: var(--bg-panel);
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 20px 24px;
+  }
+  .sidebar h2 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--text-muted);
+    margin: 0 0 12px 0;
+    font-weight: 600;
+  }
+  .sidebar section + section { margin-top: 28px; }
+  .form-group { margin-bottom: 14px; }
+  .form-group label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+  .form-group input,
+  .form-group select {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: var(--font);
+    font-size: 14px;
+    background: var(--bg-panel);
+    color: var(--text);
+  }
+  .form-group input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(30,96,145,.12);
+  }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .button-row { display: flex; gap: 8px; margin-top: 16px; }
+  button {
+    flex: 1;
+    padding: 10px 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-panel);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all .12s ease;
+  }
+  button:hover { border-color: var(--text-muted); }
+  button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+  }
+  button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+  button.primary:disabled {
+    background: var(--text-muted);
+    border-color: var(--text-muted);
+    cursor: not-allowed;
+  }
+  button.danger { color: var(--danger); }
+  .status {
+    padding: 8px 12px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    margin-bottom: 14px;
+    background: rgba(30,96,145,.06);
+    border-left: 3px solid var(--accent);
+    color: var(--text);
+  }
+  .status.success { background: rgba(45,128,80,.08); border-left-color: var(--success); }
+  .status.error { background: rgba(176,48,48,.08); border-left-color: var(--danger); }
+  .subject-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    font-size: 13px;
+    position: relative;
+  }
+  .subject-card .ulice { font-weight: 600; }
+  .subject-card .time { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+  .subject-card .id { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-top: 4px; word-break: break-all; }
+  .subject-card .actions { margin-top: 8px; }
+  .subject-card .actions button {
+    font-size: 12px;
+    padding: 4px 10px;
+  }
+  .subject-card.revoked {
+    opacity: 0.55;
+    background: rgba(176, 48, 48, 0.04);
+    border-color: rgba(176, 48, 48, 0.3);
+  }
+  .subject-card.revoked .ulice { text-decoration: line-through; }
+  .subject-card.revoked .revoked-banner {
+    margin-top: 6px;
+    padding: 4px 8px;
+    background: rgba(176, 48, 48, 0.08);
+    border-left: 3px solid var(--danger);
+    font-size: 12px;
+    color: var(--danger);
+  }
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal {
+    background: var(--bg-panel);
+    border-radius: 8px;
+    padding: 20px 24px;
+    width: 420px;
+    max-width: 90vw;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  }
+  .modal h3 { margin: 0 0 12px 0; font-size: 16px; }
+  .modal .target-info {
+    background: rgba(30,96,145,0.06);
+    border-left: 3px solid var(--accent);
+    padding: 8px 10px;
+    margin-bottom: 14px;
+    font-size: 13px;
+  }
+  .modal .target-info .ulice { font-weight: 600; }
+  .modal .target-info .id {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    word-break: break-all;
+  }
+  .modal textarea {
+    width: 100%;
+    min-height: 70px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: var(--font);
+    font-size: 14px;
+    resize: vertical;
+  }
+  .modal .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .modal .modal-actions button.danger-primary {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: white;
+  }
+  .modal .modal-actions button.danger-primary:hover {
+    background: #8a2424;
+    border-color: #8a2424;
+  }
+  .modal .modal-actions button.danger-primary:disabled {
+    background: var(--text-muted);
+    border-color: var(--text-muted);
+    cursor: not-allowed;
+  }
+  .help {
+    background: rgba(30,96,145,.04);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 14px;
+  }
+  .help strong { color: var(--text); }
+  .draw-active #map { cursor: crosshair; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Naviglink<span class="sub">— Magistrát Brno (admin)</span></h1>
+  <div class="identity">
+    <span class="dot" id="connDot"></span>
+    <span id="identityLabel">Generuji klíče…</span>
+  </div>
+</header>
+
+<main>
+  <div id="map"></div>
+
+  <aside class="sidebar">
+
+    <section>
+      <h2>Nový subjekt</h2>
+      <div class="help">
+        <strong>Postup:</strong> klikněte do mapy a postupně nakreslete polygon (3+ body),
+        pak vyplňte detaily a vyhlaste. Subjekt se kryptograficky podepíše na vašem zařízení.
+      </div>
+
+      <div id="drawStatus" class="status">Klikni do mapy a začni kreslit polygon.</div>
+
+      <div class="form-group">
+        <label>Ulice (popis)</label>
+        <input type="text" id="ulice" value="Veveří" placeholder="např. Veveří">
+      </div>
+
+      <div class="form-group">
+        <label>Datum</label>
+        <input type="date" id="datum" value="2026-06-09">
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Od (HH:MM)</label>
+          <input type="time" id="casOd" value="06:00">
+        </div>
+        <div class="form-group">
+          <label>Do (HH:MM)</label>
+          <input type="time" id="casDo" value="10:00">
+        </div>
+      </div>
+
+      <div class="button-row">
+        <button id="btnClear">Zrušit polygon</button>
+        <button id="btnPublish" class="primary" disabled>Vyhlásit</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Mé vyhlášené subjekty</h2>
+      <div id="subjectsList">
+        <div style="color: var(--text-muted); font-size: 13px;">Zatím žádné.</div>
+      </div>
+      <div class="button-row" style="margin-top: 8px;">
+        <button id="btnRefresh">Obnovit ze serveru</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Identita</h2>
+      <div style="font-size: 12px; color: var(--text-muted);">
+        Klíče jsou uloženy v <code>localStorage</code> jen ve vašem prohlížeči.
+        Pro reset (nová identita) klikněte níže.
+      </div>
+      <div class="button-row" style="margin-top: 8px;">
+        <button id="btnResetKeys" class="danger">Smazat klíče a vytvořit nové</button>
+      </div>
+    </section>
+
+  </aside>
+</main>
+
+<div id="revokeModal" class="modal-backdrop">
+  <div class="modal">
+    <h3>Zrušit vyhlášení</h3>
+    <div class="target-info">
+      <div class="ulice" id="revokeTargetUlice">—</div>
+      <div class="id" id="revokeTargetId">—</div>
+    </div>
+    <div class="form-group">
+      <label for="revokeReason">Důvod zrušení (povinné)</label>
+      <textarea id="revokeReason"
+                placeholder="Např. mráz, čištění odloženo na zítra. Technická porucha. Omyl ve vyhlášení."></textarea>
+    </div>
+    <div class="status" style="font-size:12px;">
+      Vyhlášení nebude smazáno — historie zůstává v auditním logu. Vznikne nový
+      podepsaný subjekt typu <code>revocation</code>, který původní subjekt zruší.
+    </div>
+    <div class="modal-actions">
+      <button id="btnRevokeCancel">Zavřít</button>
+      <button id="btnRevokeConfirm" class="danger-primary">Zrušit vyhlášení</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""></script>
+
+<script type="module">
+  // ---------------------------------------------------------------------------
+  // Naviglink admin client — vanilla ES module
+  // ---------------------------------------------------------------------------
+  //
+  // Klíčová odpovědnost: podepisovat SignedSubject byte-by-byte identicky jako
+  // Python server. Tj. canonicalJson v JS musí produkovat tutéž UTF-8 bajt-
+  // sekvenci jako `json.dumps(payload, sort_keys=True, separators=(",", ":"),
+  // ensure_ascii=False)`.
+  // ---------------------------------------------------------------------------
+
+  import * as ed from 'https://esm.sh/@noble/ed25519@2.1.0';
+  import { sha512 } from 'https://esm.sh/@noble/hashes@1.4.0/sha512';
+  // @noble/ed25519 v2 očekává sha512 callback (browser nemá sync SHA-512)
+  ed.etc.sha512Sync = (...m) => sha512(ed.etc.concatBytes(...m));
+
+  const API_HOST = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://127.0.0.1:8000'
+    : 'https://naviglink-living.onrender.com';
+
+  // ===========================================================================
+  // Identita — Ed25519 klíče, uložené v localStorage (jen browser)
+  // ===========================================================================
+
+  const KEY_STORAGE = 'naviglink_magistrat_key_v1';
+
+  function loadOrGenerateKey() {
+    let stored = localStorage.getItem(KEY_STORAGE);
+    if (stored) {
+      try {
+        const obj = JSON.parse(stored);
+        return { privHex: obj.priv, pubHex: obj.pub };
+      } catch (e) {
+        console.warn('Stored key corrupted, regenerating', e);
+      }
+    }
+    const priv = ed.utils.randomPrivateKey();
+    const pub = ed.getPublicKey(priv);
+    const privHex = bytesToHex(priv);
+    const pubHex = bytesToHex(pub);
+    localStorage.setItem(KEY_STORAGE, JSON.stringify({ priv: privHex, pub: pubHex }));
+    return { privHex, pubHex };
+  }
+
+  function bytesToHex(bytes) {
+    return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  function hexToBytes(hex) {
+    const bytes = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < bytes.length; i++) {
+      bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+    }
+    return bytes;
+  }
+
+  function bytesToBase64(bytes) {
+    let bin = '';
+    for (const b of bytes) bin += String.fromCharCode(b);
+    return btoa(bin);
+  }
+
+  // ===========================================================================
+  // Kanonický JSON — musí být byte-by-byte identický s Python:
+  //   json.dumps(payload, sort_keys=True, separators=(",",":"), ensure_ascii=False)
+  // ===========================================================================
+
+  function canonicalJson(value) {
+    if (value === null) return 'null';
+    if (typeof value === 'boolean') return value ? 'true' : 'false';
+    if (typeof value === 'number') {
+      // Python json u floatů: integer-valued floats jako "1.0", ale shapely
+      // souřadnice máme jako float, ostatní jako int. JSON.stringify zachová formát.
+      if (Number.isFinite(value)) return JSON.stringify(value);
+      throw new Error(`Non-finite number: ${value}`);
+    }
+    if (typeof value === 'string') {
+      // ensure_ascii=False znamená: non-ASCII chars pass-through (UTF-8 ve výsledku)
+      // JSON.stringify v JS dělá totéž (žádný \u escape pro printable Unicode)
+      return JSON.stringify(value);
+    }
+    if (Array.isArray(value)) {
+      return '[' + value.map(canonicalJson).join(',') + ']';
+    }
+    if (typeof value === 'object') {
+      const keys = Object.keys(value).sort();
+      const parts = keys.map(k => JSON.stringify(k) + ':' + canonicalJson(value[k]));
+      return '{' + parts.join(',') + '}';
+    }
+    throw new Error(`Cannot serialize: ${typeof value}`);
+  }
+
+  // ===========================================================================
+  // ISO datetime — formát identický s Python server _iso():
+  //   "%Y-%m-%dT%H:%M:%S.%fZ" — 6-digit microseconds, suffix Z
+  // ===========================================================================
+
+  function formatIsoUtc(date) {
+    const pad = (n, w = 2) => String(n).padStart(w, '0');
+    return date.getUTCFullYear() + '-' +
+           pad(date.getUTCMonth() + 1) + '-' +
+           pad(date.getUTCDate()) + 'T' +
+           pad(date.getUTCHours()) + ':' +
+           pad(date.getUTCMinutes()) + ':' +
+           pad(date.getUTCSeconds()) + '.' +
+           pad(date.getUTCMilliseconds() * 1000, 6) + 'Z';
+  }
+
+  // ===========================================================================
+  // Content-addressed identifier — BLAKE2b-128 → base32 (bez padding) → lower
+  // ===========================================================================
+
+  async function computeId(canonicalBytes) {
+    // BLAKE2b není ve WebCrypto. @noble/hashes ho má.
+    const { blake2b } = await import('https://esm.sh/@noble/hashes@1.4.0/blake2b');
+    const digest = blake2b(canonicalBytes, { dkLen: 16 });
+    return 'naviglink:' + base32(digest).toLowerCase();
+  }
+
+  function base32(bytes) {
+    // RFC 4648 base32 bez paddingu (== nakonci)
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+    let bits = 0, value = 0, output = '';
+    for (const b of bytes) {
+      value = (value << 8) | b;
+      bits += 8;
+      while (bits >= 5) {
+        output += alphabet[(value >>> (bits - 5)) & 31];
+        bits -= 5;
+      }
+    }
+    if (bits > 0) output += alphabet[(value << (5 - bits)) & 31];
+    return output;
+  }
+
+  // ===========================================================================
+  // Build + sign SignedSubject
+  // ===========================================================================
+
+  async function buildAndSignRevocation({ targetId, reason, pubHex, privHex }) {
+    const now = new Date();
+    const payload = { reason: reason };
+    const canonObj = {
+      kind: 'revocation',
+      authors: [pubHex],
+      valid_from: formatIsoUtc(now),
+      valid_to: null,
+      references: { target: targetId },
+      payload: payload,
+      sig_scheme: 'ed25519',
+    };
+    const canonStr = canonicalJson(canonObj);
+    const canonBytes = new TextEncoder().encode(canonStr);
+
+    const privBytes = hexToBytes(privHex);
+    const sigBytes = ed.sign(canonBytes, privBytes);
+    const sigB64 = bytesToBase64(sigBytes);
+
+    const id = await computeId(canonBytes);
+
+    return {
+      id: id,
+      kind: 'revocation',
+      authors: [pubHex],
+      signatures: [sigB64],
+      valid_from: formatIsoUtc(now),
+      valid_to: null,
+      references: { target: targetId },
+      payload: payload,
+      sig_scheme: 'ed25519',
+    };
+  }
+
+  async function buildAndSignSubject({ ulice, validFrom, validTo, polygon, pubHex, privHex }) {
+    const payload = {
+      typ: 'blokove_cisteni',
+      ulice: ulice,
+      geometry: {
+        type: 'Polygon',
+        coordinates: [polygon.map(([lon, lat]) => [lon, lat])],
+      },
+    };
+    const canonObj = {
+      kind: 'subject',
+      authors: [pubHex],
+      valid_from: formatIsoUtc(validFrom),
+      valid_to: formatIsoUtc(validTo),
+      references: { domain: 'traffic_cz' },
+      payload: payload,
+      sig_scheme: 'ed25519',
+    };
+    const canonStr = canonicalJson(canonObj);
+    const canonBytes = new TextEncoder().encode(canonStr);
+
+    const privBytes = hexToBytes(privHex);
+    const sigBytes = ed.sign(canonBytes, privBytes);
+    const sigB64 = bytesToBase64(sigBytes);
+
+    const id = await computeId(canonBytes);
+
+    return {
+      id: id,
+      kind: 'subject',
+      authors: [pubHex],
+      signatures: [sigB64],
+      valid_from: formatIsoUtc(validFrom),
+      valid_to: formatIsoUtc(validTo),
+      references: { domain: 'traffic_cz' },
+      payload: payload,
+      sig_scheme: 'ed25519',
+    };
+  }
+
+  // ===========================================================================
+  // API klient
+  // ===========================================================================
+
+  // Společný fetch pro GET endpointy: explicit no-store + cache-busting query.
+  // Důvod: Render edge a browser HTTP cache by jinak vracely zastaralé odpovědi,
+  // takže revokace vyhlášené v jiném okně/browseru by se nepromítly do tohoto.
+  async function apiGetNoCache(path) {
+    const sep = path.includes('?') ? '&' : '?';
+    const url = `${API_HOST}${path}${sep}_=${Date.now()}`;
+    const r = await fetch(url, {
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache' },
+    });
+    if (!r.ok) throw new Error(`GET ${path} → ${r.status}`);
+    return r.json();
+  }
+
+  async function apiHealth() {
+    try {
+      return await apiGetNoCache('/healthz');
+    } catch {
+      return null;
+    }
+  }
+
+  async function apiPostSubject(subject) {
+    const r = await fetch(`${API_HOST}/subjects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(subject),
+    });
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.detail || 'POST failed');
+    return body;
+  }
+
+  async function apiListMine(pubHex) {
+    // GET /subjects?author=<pubHex>&kind=subject — server vrátí plné SignedSubject
+    // objekty včetně geometry, takže můžeme překreslit polygony na mapě.
+    const d = await apiGetNoCache(
+      `/subjects?author=${encodeURIComponent(pubHex)}&kind=subject&limit=50`
+    );
+    return d.subjects;  // pole plných SignedSubject
+  }
+
+  async function apiListMyRevocations(pubHex) {
+    // GET /subjects?author=<pubHex>&kind=revocation — pro spárování s subjekty,
+    // abychom v UI zobrazili "Zrušeno: <důvod>" místo skrytí.
+    const d = await apiGetNoCache(
+      `/subjects?author=${encodeURIComponent(pubHex)}&kind=revocation&limit=100`
+    );
+    return d.subjects;
+  }
+
+  // ===========================================================================
+  // Mapa — Leaflet
+  // ===========================================================================
+
+  // Brno střed: 49.1951, 16.6068
+  const map = L.map('map').setView([49.1951, 16.6068], 14);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© OpenStreetMap'
+  }).addTo(map);
+
+  let drawing = [];
+  let polyline = null;
+  let polygon = null;
+  const publishedLayer = L.layerGroup().addTo(map);
+
+  function clearDrawing() {
+    drawing = [];
+    if (polyline) { map.removeLayer(polyline); polyline = null; }
+    if (polygon)  { map.removeLayer(polygon);  polygon = null;  }
+    document.getElementById('drawStatus').textContent =
+      'Klikni do mapy a začni kreslit polygon.';
+    document.getElementById('drawStatus').className = 'status';
+    document.getElementById('btnPublish').disabled = true;
+    document.body.classList.remove('draw-active');
+  }
+
+  map.on('click', (e) => {
+    const ll = e.latlng;
+    drawing.push([ll.lng, ll.lat]);
+    L.circleMarker(ll, { radius: 4, color: '#1e6091', fillOpacity: 1 }).addTo(map);
+
+    // Aktualizovat polyline / polygon
+    if (polyline) map.removeLayer(polyline);
+    if (polygon) map.removeLayer(polygon);
+    if (drawing.length >= 2) {
+      polyline = L.polyline(drawing.map(([lon, lat]) => [lat, lon]), {
+        color: '#1e6091', weight: 2, dashArray: '4,4'
+      }).addTo(map);
+    }
+    if (drawing.length >= 3) {
+      polygon = L.polygon(drawing.map(([lon, lat]) => [lat, lon]), {
+        color: '#1e6091', weight: 2, fillColor: '#1e6091', fillOpacity: 0.15
+      }).addTo(map);
+      document.getElementById('drawStatus').textContent =
+        `Polygon má ${drawing.length} bodů. Pokračuj v kreslení, nebo klikni "Vyhlásit".`;
+      document.getElementById('drawStatus').className = 'status success';
+      document.getElementById('btnPublish').disabled = false;
+    } else {
+      document.getElementById('drawStatus').textContent =
+        `Vlož další body (${drawing.length}/3 minimum).`;
+    }
+    document.body.classList.add('draw-active');
+  });
+
+  function showPublishedSubject(subj, opts = {}) {
+    const coords = subj.payload?.geometry?.coordinates?.[0];
+    if (!coords) r

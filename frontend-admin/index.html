@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Naviglink — Magistrát Brno</title>
+<title>Naviglink — Blokové čištění a omezení</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin="">
@@ -16,6 +16,7 @@
     --accent: #1e6091;
     --accent-hover: #164a73;
     --success: #2d8050;
+    --warning: #c47b18;
     --danger: #b03030;
     --border: #d8dde6;
     --shadow: 0 1px 3px rgba(0,0,0,.04), 0 2px 8px rgba(0,0,0,.06);
@@ -32,7 +33,7 @@
     font-size: 14px;
     line-height: 1.5;
     display: grid;
-    grid-template-rows: auto 1fr;
+    grid-template-rows: auto auto 1fr;
     height: 100vh;
     overflow: hidden;
   }
@@ -57,31 +58,73 @@
     font-weight: 400;
     margin-left: 8px;
   }
-  .identity {
-    font-family: var(--font-mono);
-    font-size: 12px;
+  header .header-actions a {
     color: var(--text-muted);
+    text-decoration: none;
+    font-size: 13px;
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    transition: all .15s;
+  }
+  header .header-actions a:hover {
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  .search-bar {
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 24px;
     display: flex;
-    align-items: center;
     gap: 8px;
+    align-items: center;
   }
-  .identity .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--success);
-    display: inline-block;
+  .search-bar input {
+    flex: 1;
+    max-width: 600px;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 14px;
+    font-family: var(--font);
   }
+  .search-bar input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(30,96,145,.15);
+  }
+  .search-bar button {
+    padding: 8px 16px;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: white;
+    border-radius: var(--radius);
+    font-family: var(--font);
+    font-size: 14px;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .search-bar button:hover { background: var(--accent-hover); }
+  .search-bar button:disabled {
+    background: var(--text-muted);
+    border-color: var(--text-muted);
+    cursor: not-allowed;
+  }
+  .search-bar .hint {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-left: 8px;
+  }
+
   main {
     display: grid;
-    grid-template-columns: 1fr 380px;
+    grid-template-columns: 1fr 400px;
     height: 100%;
     overflow: hidden;
   }
-  #map {
-    height: 100%;
-    width: 100%;
-  }
+  #map { height: 100%; width: 100%; }
+
   .sidebar {
     background: var(--bg-panel);
     border-left: 1px solid var(--border);
@@ -96,498 +139,167 @@
     margin: 0 0 12px 0;
     font-weight: 600;
   }
-  .sidebar section + section { margin-top: 28px; }
-  .form-group { margin-bottom: 14px; }
-  .form-group label {
-    display: block;
+  .sidebar .query-info {
     font-size: 12px;
     color: var(--text-muted);
-    margin-bottom: 4px;
-    text-transform: uppercase;
-    letter-spacing: .04em;
-  }
-  .form-group input,
-  .form-group select {
-    width: 100%;
-    padding: 8px 10px;
-    border: 1px solid var(--border);
+    margin-bottom: 12px;
+    padding: 6px 10px;
+    background: rgba(30,96,145,.05);
     border-radius: var(--radius);
-    font-family: var(--font);
-    font-size: 14px;
-    background: var(--bg-panel);
-    color: var(--text);
+    font-family: var(--font-mono);
   }
-  .form-group input:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(30,96,145,.12);
-  }
-  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .button-row { display: flex; gap: 8px; margin-top: 16px; }
-  button {
-    flex: 1;
-    padding: 10px 16px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--bg-panel);
-    color: var(--text);
-    font-family: var(--font);
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all .12s ease;
-  }
-  button:hover { border-color: var(--text-muted); }
-  button.primary {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: white;
-  }
-  button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
-  button.primary:disabled {
-    background: var(--text-muted);
-    border-color: var(--text-muted);
-    cursor: not-allowed;
-  }
-  button.danger { color: var(--danger); }
-  .status {
-    padding: 8px 12px;
-    border-radius: var(--radius);
-    font-size: 13px;
-    margin-bottom: 14px;
-    background: rgba(30,96,145,.06);
-    border-left: 3px solid var(--accent);
-    color: var(--text);
-  }
-  .status.success { background: rgba(45,128,80,.08); border-left-color: var(--success); }
-  .status.error { background: rgba(176,48,48,.08); border-left-color: var(--danger); }
   .subject-card {
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 10px 12px;
-    margin-bottom: 8px;
-    font-size: 13px;
-    position: relative;
-  }
-  .subject-card .ulice { font-weight: 600; }
-  .subject-card .time { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
-  .subject-card .id { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-top: 4px; word-break: break-all; }
-  .subject-card .actions { margin-top: 8px; }
-  .subject-card .actions button {
-    font-size: 12px;
-    padding: 4px 10px;
-  }
-  .subject-card.revoked {
-    opacity: 0.55;
-    background: rgba(176, 48, 48, 0.04);
-    border-color: rgba(176, 48, 48, 0.3);
-  }
-  .subject-card.revoked .ulice { text-decoration: line-through; }
-  .subject-card.revoked .revoked-banner {
-    margin-top: 6px;
-    padding: 4px 8px;
-    background: rgba(176, 48, 48, 0.08);
-    border-left: 3px solid var(--danger);
-    font-size: 12px;
-    color: var(--danger);
-  }
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.4);
-    display: none;
-    align-items: center;
-    justify-content: center;
-    z-index: 2000;
-  }
-  .modal-backdrop.open { display: flex; }
-  .modal {
+    padding: 12px 14px;
+    margin-bottom: 10px;
     background: var(--bg-panel);
-    border-radius: 8px;
-    padding: 20px 24px;
-    width: 420px;
-    max-width: 90vw;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    transition: border-color .15s, box-shadow .15s;
+    cursor: pointer;
   }
-  .modal h3 { margin: 0 0 12px 0; font-size: 16px; }
-  .modal .target-info {
-    background: rgba(30,96,145,0.06);
-    border-left: 3px solid var(--accent);
-    padding: 8px 10px;
-    margin-bottom: 14px;
-    font-size: 13px;
+  .subject-card:hover {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(30,96,145,.1);
   }
-  .modal .target-info .ulice { font-weight: 600; }
-  .modal .target-info .id {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    color: var(--text-muted);
-    margin-top: 4px;
-    word-break: break-all;
-  }
-  .modal textarea {
-    width: 100%;
-    min-height: 70px;
-    padding: 8px 10px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    font-family: var(--font);
-    font-size: 14px;
-    resize: vertical;
-  }
-  .modal .modal-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    margin-top: 16px;
-  }
-  .modal .modal-actions button.danger-primary {
-    background: var(--danger);
+  .subject-card.active-now {
     border-color: var(--danger);
+    background: rgba(176,48,48,.04);
+  }
+  .subject-card.active-now::before {
+    content: "PROBÍHÁ TEĎ";
+    display: inline-block;
+    background: var(--danger);
     color: white;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .05em;
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-bottom: 6px;
   }
-  .modal .modal-actions button.danger-primary:hover {
-    background: #8a2424;
-    border-color: #8a2424;
+  .subject-card .ulice {
+    font-weight: 600;
+    font-size: 15px;
   }
-  .modal .modal-actions button.danger-primary:disabled {
-    background: var(--text-muted);
-    border-color: var(--text-muted);
-    cursor: not-allowed;
-  }
-  .help {
-    background: rgba(30,96,145,.04);
-    border-radius: var(--radius);
-    padding: 10px 12px;
-    font-size: 12px;
+  .subject-card .typ {
     color: var(--text-muted);
-    margin-bottom: 14px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    margin-top: 2px;
   }
-  .help strong { color: var(--text); }
-  .draw-active #map { cursor: crosshair; }
+  .subject-card .time {
+    color: var(--text);
+    font-size: 13px;
+    margin-top: 4px;
+  }
+  .subject-card .time .relative {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-left: 4px;
+  }
+  .subject-card .id {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 6px;
+    word-break: break-all;
+    opacity: 0.65;
+  }
+
+  .info-block {
+    margin-top: 24px;
+    padding: 14px 16px;
+    background: rgba(30,96,145,.04);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius);
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.55;
+  }
+  .info-block p { margin: 0 0 8px 0; }
+  .info-block p:last-child { margin: 0; }
+  .info-block a { color: var(--accent); }
+  .info-block strong { color: var(--text); }
+
+  .hint-empty {
+    color: var(--text-muted);
+    font-size: 13px;
+    padding: 20px 0;
+    text-align: center;
+    background: rgba(0,0,0,.02);
+    border-radius: var(--radius);
+  }
+  .loading {
+    color: var(--text-muted);
+    font-size: 13px;
+    padding: 12px 0;
+  }
+  .error {
+    color: var(--danger);
+    font-size: 13px;
+    padding: 10px 12px;
+    background: rgba(176,48,48,.06);
+    border-left: 3px solid var(--danger);
+    border-radius: var(--radius);
+  }
+
+  @media (max-width: 800px) {
+    main { grid-template-columns: 1fr; grid-template-rows: 50% 50%; }
+    .sidebar { border-left: none; border-top: 1px solid var(--border); }
+  }
 </style>
 </head>
 <body>
+
 <header>
-  <h1>Naviglink<span class="sub">— Magistrát Brno (admin)</span></h1>
-  <div class="identity">
-    <span class="dot" id="connDot"></span>
-    <span id="identityLabel">Generuji klíče…</span>
+  <h1>Naviglink <span class="sub">— blokové čištění a omezení</span></h1>
+  <div class="header-actions">
+    <a href="/admin/">Jsem magistrát →</a>
   </div>
 </header>
+
+<div class="search-bar">
+  <input id="searchInput" type="text" placeholder="Zadej adresu (např. Veveří 25, Brno) nebo klikni na mapu" autocomplete="off">
+  <button id="searchBtn">Vyhledat</button>
+  <span class="hint">nebo klikni kamkoli do mapy</span>
+</div>
 
 <main>
   <div id="map"></div>
 
   <aside class="sidebar">
+    <h2>Nadcházejících 7 dní</h2>
+    <div id="queryInfo" class="query-info" style="display:none;"></div>
+    <div id="upcomingList">
+      <div class="hint-empty">Zadej adresu nebo klikni na mapu, abychom našli omezení v okolí.</div>
+    </div>
 
-    <section>
-      <h2>Nový subjekt</h2>
-      <div class="help">
-        <strong>Postup:</strong> klikněte do mapy a postupně nakreslete polygon (3+ body),
-        pak vyplňte detaily a vyhlaste. Subjekt se kryptograficky podepíše na vašem zařízení.
-      </div>
-
-      <div id="drawStatus" class="status">Klikni do mapy a začni kreslit polygon.</div>
-
-      <div class="form-group">
-        <label>Ulice (popis)</label>
-        <input type="text" id="ulice" value="Veveří" placeholder="např. Veveří">
-      </div>
-
-      <div class="form-group">
-        <label>Datum</label>
-        <input type="date" id="datum" value="2026-06-09">
-      </div>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label>Od (HH:MM)</label>
-          <input type="time" id="casOd" value="06:00">
-        </div>
-        <div class="form-group">
-          <label>Do (HH:MM)</label>
-          <input type="time" id="casDo" value="10:00">
-        </div>
-      </div>
-
-      <div class="button-row">
-        <button id="btnClear">Zrušit polygon</button>
-        <button id="btnPublish" class="primary" disabled>Vyhlásit</button>
-      </div>
-    </section>
-
-    <section>
-      <h2>Mé vyhlášené subjekty</h2>
-      <div id="subjectsList">
-        <div style="color: var(--text-muted); font-size: 13px;">Zatím žádné.</div>
-      </div>
-      <div class="button-row" style="margin-top: 8px;">
-        <button id="btnRefresh">Obnovit ze serveru</button>
-      </div>
-    </section>
-
-    <section>
-      <h2>Identita</h2>
-      <div style="font-size: 12px; color: var(--text-muted);">
-        Klíče jsou uloženy v <code>localStorage</code> jen ve vašem prohlížeči.
-        Pro reset (nová identita) klikněte níže.
-      </div>
-      <div class="button-row" style="margin-top: 8px;">
-        <button id="btnResetKeys" class="danger">Smazat klíče a vytvořit nové</button>
-      </div>
-    </section>
-
+    <div class="info-block">
+      <p><strong>Co tu vidíš?</strong> Blokové čištění a další omezení vyhlášená samosprávami přes systém <strong>Naviglink</strong>. Každé vyhlášení je kryptograficky podepsané — můžeš ověřit, kdo ho vyhlásil a kdy.</p>
+      <p>Data jsou veřejná. Žádný účet, žádné sledování.</p>
+      <p><a href="/admin/">Jsi z magistrátu? Vyhlašuj přes administraci →</a></p>
+    </div>
   </aside>
 </main>
-
-<div id="revokeModal" class="modal-backdrop">
-  <div class="modal">
-    <h3>Zrušit vyhlášení</h3>
-    <div class="target-info">
-      <div class="ulice" id="revokeTargetUlice">—</div>
-      <div class="id" id="revokeTargetId">—</div>
-    </div>
-    <div class="form-group">
-      <label for="revokeReason">Důvod zrušení (povinné)</label>
-      <textarea id="revokeReason"
-                placeholder="Např. mráz, čištění odloženo na zítra. Technická porucha. Omyl ve vyhlášení."></textarea>
-    </div>
-    <div class="status" style="font-size:12px;">
-      Vyhlášení nebude smazáno — historie zůstává v auditním logu. Vznikne nový
-      podepsaný subjekt typu <code>revocation</code>, který původní subjekt zruší.
-    </div>
-    <div class="modal-actions">
-      <button id="btnRevokeCancel">Zavřít</button>
-      <button id="btnRevokeConfirm" class="danger-primary">Zrušit vyhlášení</button>
-    </div>
-  </div>
-</div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
         crossorigin=""></script>
-
-<script type="module">
-  // ---------------------------------------------------------------------------
-  // Naviglink admin client — vanilla ES module
-  // ---------------------------------------------------------------------------
-  //
-  // Klíčová odpovědnost: podepisovat SignedSubject byte-by-byte identicky jako
-  // Python server. Tj. canonicalJson v JS musí produkovat tutéž UTF-8 bajt-
-  // sekvenci jako `json.dumps(payload, sort_keys=True, separators=(",", ":"),
-  // ensure_ascii=False)`.
-  // ---------------------------------------------------------------------------
-
-  import * as ed from 'https://esm.sh/@noble/ed25519@2.1.0';
-  import { sha512 } from 'https://esm.sh/@noble/hashes@1.4.0/sha512';
-  // @noble/ed25519 v2 očekává sha512 callback (browser nemá sync SHA-512)
-  ed.etc.sha512Sync = (...m) => sha512(ed.etc.concatBytes(...m));
-
-  const API_HOST = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? 'http://127.0.0.1:8000'
-    : 'https://naviglink-living.onrender.com';
-
+<script>
   // ===========================================================================
-  // Identita — Ed25519 klíče, uložené v localStorage (jen browser)
+  // Config
   // ===========================================================================
 
-  const KEY_STORAGE = 'naviglink_magistrat_key_v1';
-
-  function loadOrGenerateKey() {
-    let stored = localStorage.getItem(KEY_STORAGE);
-    if (stored) {
-      try {
-        const obj = JSON.parse(stored);
-        return { privHex: obj.priv, pubHex: obj.pub };
-      } catch (e) {
-        console.warn('Stored key corrupted, regenerating', e);
-      }
-    }
-    const priv = ed.utils.randomPrivateKey();
-    const pub = ed.getPublicKey(priv);
-    const privHex = bytesToHex(priv);
-    const pubHex = bytesToHex(pub);
-    localStorage.setItem(KEY_STORAGE, JSON.stringify({ priv: privHex, pub: pubHex }));
-    return { privHex, pubHex };
-  }
-
-  function bytesToHex(bytes) {
-    return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
-  }
-
-  function hexToBytes(hex) {
-    const bytes = new Uint8Array(hex.length / 2);
-    for (let i = 0; i < bytes.length; i++) {
-      bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
-    }
-    return bytes;
-  }
-
-  function bytesToBase64(bytes) {
-    let bin = '';
-    for (const b of bytes) bin += String.fromCharCode(b);
-    return btoa(bin);
-  }
+  const API_HOST = 'https://naviglink-living.onrender.com';
+  const DEFAULT_CENTER = [49.7437, 15.3389];  // Polička = geografický střed ČR
+  const DEFAULT_ZOOM = 7;
+  const DAYS_LOOKAHEAD = 7;
 
   // ===========================================================================
-  // Kanonický JSON — musí být byte-by-byte identický s Python:
-  //   json.dumps(payload, sort_keys=True, separators=(",",":"), ensure_ascii=False)
+  // API
   // ===========================================================================
 
-  function canonicalJson(value) {
-    if (value === null) return 'null';
-    if (typeof value === 'boolean') return value ? 'true' : 'false';
-    if (typeof value === 'number') {
-      // Python json u floatů: integer-valued floats jako "1.0", ale shapely
-      // souřadnice máme jako float, ostatní jako int. JSON.stringify zachová formát.
-      if (Number.isFinite(value)) return JSON.stringify(value);
-      throw new Error(`Non-finite number: ${value}`);
-    }
-    if (typeof value === 'string') {
-      // ensure_ascii=False znamená: non-ASCII chars pass-through (UTF-8 ve výsledku)
-      // JSON.stringify v JS dělá totéž (žádný \u escape pro printable Unicode)
-      return JSON.stringify(value);
-    }
-    if (Array.isArray(value)) {
-      return '[' + value.map(canonicalJson).join(',') + ']';
-    }
-    if (typeof value === 'object') {
-      const keys = Object.keys(value).sort();
-      const parts = keys.map(k => JSON.stringify(k) + ':' + canonicalJson(value[k]));
-      return '{' + parts.join(',') + '}';
-    }
-    throw new Error(`Cannot serialize: ${typeof value}`);
-  }
-
-  // ===========================================================================
-  // ISO datetime — formát identický s Python server _iso():
-  //   "%Y-%m-%dT%H:%M:%S.%fZ" — 6-digit microseconds, suffix Z
-  // ===========================================================================
-
-  function formatIsoUtc(date) {
-    const pad = (n, w = 2) => String(n).padStart(w, '0');
-    return date.getUTCFullYear() + '-' +
-           pad(date.getUTCMonth() + 1) + '-' +
-           pad(date.getUTCDate()) + 'T' +
-           pad(date.getUTCHours()) + ':' +
-           pad(date.getUTCMinutes()) + ':' +
-           pad(date.getUTCSeconds()) + '.' +
-           pad(date.getUTCMilliseconds() * 1000, 6) + 'Z';
-  }
-
-  // ===========================================================================
-  // Content-addressed identifier — BLAKE2b-128 → base32 (bez padding) → lower
-  // ===========================================================================
-
-  async function computeId(canonicalBytes) {
-    // BLAKE2b není ve WebCrypto. @noble/hashes ho má.
-    const { blake2b } = await import('https://esm.sh/@noble/hashes@1.4.0/blake2b');
-    const digest = blake2b(canonicalBytes, { dkLen: 16 });
-    return 'naviglink:' + base32(digest).toLowerCase();
-  }
-
-  function base32(bytes) {
-    // RFC 4648 base32 bez paddingu (== nakonci)
-    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-    let bits = 0, value = 0, output = '';
-    for (const b of bytes) {
-      value = (value << 8) | b;
-      bits += 8;
-      while (bits >= 5) {
-        output += alphabet[(value >>> (bits - 5)) & 31];
-        bits -= 5;
-      }
-    }
-    if (bits > 0) output += alphabet[(value << (5 - bits)) & 31];
-    return output;
-  }
-
-  // ===========================================================================
-  // Build + sign SignedSubject
-  // ===========================================================================
-
-  async function buildAndSignRevocation({ targetId, reason, pubHex, privHex }) {
-    const now = new Date();
-    const payload = { reason: reason };
-    const canonObj = {
-      kind: 'revocation',
-      authors: [pubHex],
-      valid_from: formatIsoUtc(now),
-      valid_to: null,
-      references: { target: targetId },
-      payload: payload,
-      sig_scheme: 'ed25519',
-    };
-    const canonStr = canonicalJson(canonObj);
-    const canonBytes = new TextEncoder().encode(canonStr);
-
-    const privBytes = hexToBytes(privHex);
-    const sigBytes = ed.sign(canonBytes, privBytes);
-    const sigB64 = bytesToBase64(sigBytes);
-
-    const id = await computeId(canonBytes);
-
-    return {
-      id: id,
-      kind: 'revocation',
-      authors: [pubHex],
-      signatures: [sigB64],
-      valid_from: formatIsoUtc(now),
-      valid_to: null,
-      references: { target: targetId },
-      payload: payload,
-      sig_scheme: 'ed25519',
-    };
-  }
-
-  async function buildAndSignSubject({ ulice, validFrom, validTo, polygon, pubHex, privHex }) {
-    const payload = {
-      typ: 'blokove_cisteni',
-      ulice: ulice,
-      geometry: {
-        type: 'Polygon',
-        coordinates: [polygon.map(([lon, lat]) => [lon, lat])],
-      },
-    };
-    const canonObj = {
-      kind: 'subject',
-      authors: [pubHex],
-      valid_from: formatIsoUtc(validFrom),
-      valid_to: formatIsoUtc(validTo),
-      references: { domain: 'traffic_cz' },
-      payload: payload,
-      sig_scheme: 'ed25519',
-    };
-    const canonStr = canonicalJson(canonObj);
-    const canonBytes = new TextEncoder().encode(canonStr);
-
-    const privBytes = hexToBytes(privHex);
-    const sigBytes = ed.sign(canonBytes, privBytes);
-    const sigB64 = bytesToBase64(sigBytes);
-
-    const id = await computeId(canonBytes);
-
-    return {
-      id: id,
-      kind: 'subject',
-      authors: [pubHex],
-      signatures: [sigB64],
-      valid_from: formatIsoUtc(validFrom),
-      valid_to: formatIsoUtc(validTo),
-      references: { domain: 'traffic_cz' },
-      payload: payload,
-      sig_scheme: 'ed25519',
-    };
-  }
-
-  // ===========================================================================
-  // API klient
-  // ===========================================================================
-
-  // Společný fetch pro GET endpointy: explicit no-store + cache-busting query.
-  // Důvod: Render edge a browser HTTP cache by jinak vracely zastaralé odpovědi,
-  // takže revokace vyhlášené v jiném okně/browseru by se nepromítly do tohoto.
   async function apiGetNoCache(path) {
     const sep = path.includes('?') ? '&' : '?';
     const url = `${API_HOST}${path}${sep}_=${Date.now()}`;
@@ -599,345 +311,184 @@
     return r.json();
   }
 
-  async function apiHealth() {
-    try {
-      return await apiGetNoCache('/healthz');
-    } catch {
-      return null;
-    }
+  async function apiUpcoming(lon, lat) {
+    return apiGetNoCache(`/upcoming?lon=${lon}&lat=${lat}&days=${DAYS_LOOKAHEAD}`);
   }
 
-  async function apiPostSubject(subject) {
-    const r = await fetch(`${API_HOST}/subjects`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(subject),
+  // Nominatim — OpenStreetMap public geocoder. Rate limit 1 req/s.
+  // Pro pilot s několika uživateli OK; produkce by chtěla vlastní cache.
+  async function geocodeAddress(query) {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&accept-language=cs&countrycodes=cz`;
+    const r = await fetch(url, {
+      headers: { 'Accept-Language': 'cs' },
     });
-    const body = await r.json();
-    if (!r.ok) throw new Error(body.detail || 'POST failed');
-    return body;
-  }
-
-  async function apiListMine(pubHex) {
-    // GET /subjects?author=<pubHex>&kind=subject — server vrátí plné SignedSubject
-    // objekty včetně geometry, takže můžeme překreslit polygony na mapě.
-    const d = await apiGetNoCache(
-      `/subjects?author=${encodeURIComponent(pubHex)}&kind=subject&limit=50`
-    );
-    return d.subjects;  // pole plných SignedSubject
-  }
-
-  async function apiListMyRevocations(pubHex) {
-    // GET /subjects?author=<pubHex>&kind=revocation — pro spárování s subjekty,
-    // abychom v UI zobrazili "Zrušeno: <důvod>" místo skrytí.
-    const d = await apiGetNoCache(
-      `/subjects?author=${encodeURIComponent(pubHex)}&kind=revocation&limit=100`
-    );
-    return d.subjects;
+    if (!r.ok) throw new Error(`Geocoder error ${r.status}`);
+    const data = await r.json();
+    if (data.length === 0) return null;
+    const item = data[0];
+    return {
+      lat: parseFloat(item.lat),
+      lon: parseFloat(item.lon),
+      display: item.display_name,
+    };
   }
 
   // ===========================================================================
-  // Mapa — Leaflet
+  // Mapa
   // ===========================================================================
 
-  // Brno střed: 49.1951, 16.6068
-  const map = L.map('map').setView([49.1951, 16.6068], 14);
+  const map = L.map('map').setView(DEFAULT_CENTER, DEFAULT_ZOOM);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
-    attribution: '© OpenStreetMap'
+    attribution: '© OpenStreetMap',
   }).addTo(map);
 
-  let drawing = [];
-  let polyline = null;
-  let polygon = null;
-  const publishedLayer = L.layerGroup().addTo(map);
-
-  function clearDrawing() {
-    drawing = [];
-    if (polyline) { map.removeLayer(polyline); polyline = null; }
-    if (polygon)  { map.removeLayer(polygon);  polygon = null;  }
-    document.getElementById('drawStatus').textContent =
-      'Klikni do mapy a začni kreslit polygon.';
-    document.getElementById('drawStatus').className = 'status';
-    document.getElementById('btnPublish').disabled = true;
-    document.body.classList.remove('draw-active');
-  }
+  // Vrstvy: marker bodu dotazu + polygony výsledků
+  let queryMarker = null;
+  const resultsLayer = L.layerGroup().addTo(map);
+  const polygonRefs = new Map();  // subject.id → L.polygon
 
   map.on('click', (e) => {
-    const ll = e.latlng;
-    drawing.push([ll.lng, ll.lat]);
-    L.circleMarker(ll, { radius: 4, color: '#1e6091', fillOpacity: 1 }).addTo(map);
-
-    // Aktualizovat polyline / polygon
-    if (polyline) map.removeLayer(polyline);
-    if (polygon) map.removeLayer(polygon);
-    if (drawing.length >= 2) {
-      polyline = L.polyline(drawing.map(([lon, lat]) => [lat, lon]), {
-        color: '#1e6091', weight: 2, dashArray: '4,4'
-      }).addTo(map);
-    }
-    if (drawing.length >= 3) {
-      polygon = L.polygon(drawing.map(([lon, lat]) => [lat, lon]), {
-        color: '#1e6091', weight: 2, fillColor: '#1e6091', fillOpacity: 0.15
-      }).addTo(map);
-      document.getElementById('drawStatus').textContent =
-        `Polygon má ${drawing.length} bodů. Pokračuj v kreslení, nebo klikni "Vyhlásit".`;
-      document.getElementById('drawStatus').className = 'status success';
-      document.getElementById('btnPublish').disabled = false;
-    } else {
-      document.getElementById('drawStatus').textContent =
-        `Vlož další body (${drawing.length}/3 minimum).`;
-    }
-    document.body.classList.add('draw-active');
+    loadAndShow(e.latlng.lng, e.latlng.lat, null);
   });
 
-  function showPublishedSubject(subj, opts = {}) {
-    const coords = subj.payload?.geometry?.coordinates?.[0];
-    if (!coords) return;
+  // ===========================================================================
+  // Render
+  // ===========================================================================
+
+  function setQueryMarker(lon, lat) {
+    if (queryMarker) map.removeLayer(queryMarker);
+    queryMarker = L.marker([lat, lon], {
+      icon: L.divIcon({
+        className: 'query-marker',
+        html: '<div style="width:14px;height:14px;background:#1e6091;border:3px solid white;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,0.4);"></div>',
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
+      }),
+    }).addTo(map);
+  }
+
+  function drawPolygon(subject, opts = {}) {
+    const coords = subject.payload?.geometry?.coordinates?.[0];
+    if (!coords) return null;
     const latlngs = coords.map(([lon, lat]) => [lat, lon]);
-    const isRevoked = !!opts.revoked;
-    const style = isRevoked
-      ? { color: '#8a8a8a', weight: 1, dashArray: '6,4', fillColor: '#8a8a8a', fillOpacity: 0.08 }
-      : { color: '#2d8050', weight: 2, fillColor: '#2d8050', fillOpacity: 0.2 };
-    const banner = isRevoked
-      ? '<br><span style="color:#b03030;font-size:11px;">ZRUŠENO</span>'
-      : '';
-    L.polygon(latlngs, style)
-      .bindPopup(`<strong>${subj.payload.ulice}</strong>${banner}<br>
-                  ${subj.valid_from.slice(0, 16).replace('T', ' ')} →
-                  ${subj.valid_to.slice(0, 16).replace('T', ' ')}<br>
-                  <small style="font-family:monospace">${subj.id}</small>`)
-      .addTo(publishedLayer);
+    const isActiveNow = opts.activeNow;
+    const style = isActiveNow
+      ? { color: '#b03030', weight: 3, fillColor: '#b03030', fillOpacity: 0.18 }
+      : { color: '#c47b18', weight: 2, fillColor: '#c47b18', fillOpacity: 0.12 };
+    const poly = L.polygon(latlngs, style);
+    const popup = `
+      <strong>${escapeHtml(subject.payload?.ulice || '(bez popisu)')}</strong><br>
+      ${escapeHtml(subject.payload?.typ || subject.kind)}<br>
+      <small>${formatTimeRange(subject.valid_from, subject.valid_to)}</small>
+    `;
+    poly.bindPopup(popup);
+    poly.addTo(resultsLayer);
+    polygonRefs.set(subject.id, poly);
+    return poly;
+  }
+
+  function clearResults() {
+    resultsLayer.clearLayers();
+    polygonRefs.clear();
+  }
+
+  function renderUpcoming(subjects) {
+    const list = document.getElementById('upcomingList');
+    if (subjects.length === 0) {
+      list.innerHTML = '<div class="hint-empty">V tomto okolí není v nejbližších ' + DAYS_LOOKAHEAD + ' dnech vyhlášeno žádné omezení.</div>';
+      return;
+    }
+    const now = new Date();
+    list.innerHTML = '';
+    for (const s of subjects) {
+      const validFrom = new Date(s.valid_from);
+      const validTo = new Date(s.valid_to);
+      const activeNow = validFrom <= now && now < validTo;
+
+      const div = document.createElement('div');
+      div.className = 'subject-card' + (activeNow ? ' active-now' : '');
+      div.dataset.subjectId = s.id;
+      div.innerHTML = `
+        <div class="ulice">${escapeHtml(s.payload?.ulice || '(bez popisu)')}</div>
+        <div class="typ">${escapeHtml(s.payload?.typ || s.kind)}</div>
+        <div class="time">
+          ${formatTimeRange(s.valid_from, s.valid_to)}
+          <span class="relative">${relativeWhen(validFrom, now)}</span>
+        </div>
+        <div class="id">${escapeHtml(s.id)}</div>
+      `;
+      div.addEventListener('click', () => {
+        const poly = polygonRefs.get(s.id);
+        if (poly) {
+          map.fitBounds(poly.getBounds(), { padding: [50, 50] });
+          poly.openPopup();
+        }
+      });
+      list.appendChild(div);
+
+      drawPolygon(s, { activeNow });
+    }
   }
 
   // ===========================================================================
-  // UI handlers
+  // Flow
   // ===========================================================================
 
-  const { pubHex, privHex } = loadOrGenerateKey();
-  document.getElementById('identityLabel').textContent =
-    'did:key:' + pubHex.slice(0, 16) + '…';
+  async function loadAndShow(lon, lat, displayHint) {
+    setQueryMarker(lon, lat);
+    clearResults();
 
-  apiHealth().then(h => {
-    if (!h) {
-      document.getElementById('connDot').style.background = 'var(--danger)';
-      document.getElementById('identityLabel').textContent += ' (server offline)';
-    }
-  });
-
-  document.getElementById('btnClear').addEventListener('click', clearDrawing);
-
-  document.getElementById('btnResetKeys').addEventListener('click', () => {
-    if (!confirm('Smazat klíče a vytvořit novou identitu? Budoucí dotazy nebudou identifikovat vás jako autora předchozích subjektů.')) return;
-    localStorage.removeItem(KEY_STORAGE);
-    localStorage.removeItem('naviglink_my_subjects'); // legacy klíč z v1
-    location.reload();
-  });
-
-  document.getElementById('btnRefresh').addEventListener('click', refreshSubjectsList);
-
-  document.getElementById('btnPublish').addEventListener('click', async () => {
-    if (drawing.length < 3) {
-      alert('Nakresli aspoň 3 body.');
-      return;
-    }
-    const ulice = document.getElementById('ulice').value.trim();
-    const datum = document.getElementById('datum').value;     // "2026-06-09"
-    const casOd = document.getElementById('casOd').value;     // "06:00"
-    const casDo = document.getElementById('casDo').value;     // "10:00"
-
-    if (!ulice || !datum || !casOd || !casDo) {
-      alert('Vyplň všechna pole.');
-      return;
-    }
-
-    const btn = document.getElementById('btnPublish');
-    btn.disabled = true;
-    btn.textContent = 'Podepisuju a posílám…';
+    const list = document.getElementById('upcomingList');
+    const info = document.getElementById('queryInfo');
+    list.innerHTML = '<div class="loading">Načítám…</div>';
+    info.style.display = 'block';
+    info.textContent = displayHint
+      ? `${displayHint} · ${lon.toFixed(5)}, ${lat.toFixed(5)}`
+      : `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
 
     try {
-      const validFrom = new Date(`${datum}T${casOd}:00Z`);
-      const validTo   = new Date(`${datum}T${casDo}:00Z`);
-
-      // Uzavřít polygon (přidat první bod na konec, jak vyžaduje GeoJSON)
-      const closed = [...drawing, drawing[0]];
-
-      const subject = await buildAndSignSubject({
-        ulice, validFrom, validTo,
-        polygon: closed,
-        pubHex, privHex,
-      });
-
-      console.log('Subject ready:', subject);
-
-      const result = await apiPostSubject(subject);
-      console.log('Server response:', result);
-
-      document.getElementById('drawStatus').textContent =
-        `Vyhlášeno: ${ulice}, ID ${subject.id.slice(0, 30)}…`;
-      document.getElementById('drawStatus').className = 'status success';
-
-      showPublishedSubject(subject);
-      clearDrawing();
-      refreshSubjectsList();
+      const data = await apiUpcoming(lon, lat);
+      renderUpcoming(data.subjects);
     } catch (e) {
       console.error(e);
-      document.getElementById('drawStatus').textContent = `Chyba: ${e.message}`;
-      document.getElementById('drawStatus').className = 'status error';
-    } finally {
-      btn.disabled = false;
-      btn.textContent = 'Vyhlásit';
+      list.innerHTML = `<div class="error">Chyba: ${escapeHtml(e.message)}</div>`;
     }
+  }
+
+  document.getElementById('searchBtn').addEventListener('click', doSearch);
+  document.getElementById('searchInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') doSearch();
   });
 
-  async function refreshSubjectsList() {
-    const list = document.getElementById('subjectsList');
-    list.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">Načítám…</div>';
-
-    // Vyčistit existující publikované polygony z mapy a překreslit znovu.
-    publishedLayer.clearLayers();
-
+  async function doSearch() {
+    const q = document.getElementById('searchInput').value.trim();
+    if (!q) return;
+    const btn = document.getElementById('searchBtn');
+    btn.disabled = true;
+    btn.textContent = 'Hledám…';
     try {
-      const [subjects, revocations] = await Promise.all([
-        apiListMine(pubHex),
-        apiListMyRevocations(pubHex),
-      ]);
-
-      // Mapa target_id → revokace (poslední vyhrává, ale obvykle bude jen jedna)
-      const revokeMap = new Map();
-      for (const rev of revocations) {
-        const tgt = rev.references?.target;
-        if (tgt) revokeMap.set(tgt, rev);
-      }
-
-      if (subjects.length === 0) {
-        list.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">Žádné aktivní subjekty.</div>';
+      const r = await geocodeAddress(q);
+      if (!r) {
+        const list = document.getElementById('upcomingList');
+        list.innerHTML = `<div class="error">Adresa nenalezena: ${escapeHtml(q)}</div>`;
         return;
       }
-      list.innerHTML = '';
-      for (const s of subjects) {
-        const ulice = s.payload?.ulice || '(bez popisu)';
-        const rev = revokeMap.get(s.id);
-        const isRevoked = !!rev;
-
-        const div = document.createElement('div');
-        div.className = 'subject-card' + (isRevoked ? ' revoked' : '');
-
-        const timeRange = `${new Date(s.valid_from).toLocaleString('cs-CZ')} → ${new Date(s.valid_to).toLocaleString('cs-CZ')}`;
-
-        let html = `
-          <div class="ulice">${escapeHtml(ulice)}</div>
-          <div class="time">${timeRange}</div>
-          <div class="id">${escapeHtml(s.id)}</div>
-        `;
-
-        if (isRevoked) {
-          const reason = rev.payload?.reason || '(bez důvodu)';
-          const revokedAt = new Date(rev.valid_from).toLocaleString('cs-CZ');
-          html += `
-            <div class="revoked-banner">
-              <strong>Zrušeno ${escapeHtml(revokedAt)}:</strong>
-              ${escapeHtml(reason)}
-            </div>
-          `;
-        } else {
-          html += `
-            <div class="actions">
-              <button class="danger btn-revoke"
-                      data-subject-id="${escapeHtml(s.id)}"
-                      data-ulice="${escapeHtml(ulice)}">
-                Zrušit vyhlášení
-              </button>
-            </div>
-          `;
-        }
-
-        div.innerHTML = html;
-        list.appendChild(div);
-
-        // Polygon na mapě — revokované zobrazím šedě, aktivní normálně
-        showPublishedSubject(s, { revoked: isRevoked });
-      }
-
-      // Připojit handlery na všechna nově vykreslená tlačítka
-      for (const btn of list.querySelectorAll('.btn-revoke')) {
-        btn.addEventListener('click', () => {
-          openRevokeModal({
-            subjectId: btn.dataset.subjectId,
-            ulice: btn.dataset.ulice,
-          });
-        });
-      }
-    } catch (e) {
-      list.innerHTML = `<div style="color:var(--danger);font-size:13px;">Chyba: ${escapeHtml(e.message)}</div>`;
-    }
-  }
-
-  // ===========================================================================
-  // Revoke modal
-  // ===========================================================================
-
-  function openRevokeModal({ subjectId, ulice }) {
-    document.getElementById('revokeTargetUlice').textContent = ulice;
-    document.getElementById('revokeTargetId').textContent = subjectId;
-    const reasonField = document.getElementById('revokeReason');
-    reasonField.value = '';
-    const modal = document.getElementById('revokeModal');
-    modal.classList.add('open');
-    modal.dataset.targetId = subjectId;
-    setTimeout(() => reasonField.focus(), 50);
-  }
-
-  function closeRevokeModal() {
-    const modal = document.getElementById('revokeModal');
-    modal.classList.remove('open');
-    delete modal.dataset.targetId;
-  }
-
-  document.getElementById('btnRevokeCancel').addEventListener('click', closeRevokeModal);
-  document.getElementById('revokeModal').addEventListener('click', (e) => {
-    if (e.target.id === 'revokeModal') closeRevokeModal();
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && document.getElementById('revokeModal').classList.contains('open')) {
-      closeRevokeModal();
-    }
-  });
-
-  document.getElementById('btnRevokeConfirm').addEventListener('click', async () => {
-    const modal = document.getElementById('revokeModal');
-    const targetId = modal.dataset.targetId;
-    const reason = document.getElementById('revokeReason').value.trim();
-
-    if (!targetId) { closeRevokeModal(); return; }
-    if (!reason) {
-      alert('Důvod zrušení je povinný.');
-      return;
-    }
-
-    const btn = document.getElementById('btnRevokeConfirm');
-    btn.disabled = true;
-    btn.textContent = 'Podepisuji…';
-
-    try {
-      const rev = await buildAndSignRevocation({
-        targetId: targetId,
-        reason: reason,
-        pubHex: pubHex,
-        privHex: privHex,
-      });
-      btn.textContent = 'Odesílám…';
-      await apiPostSubject(rev);
-      closeRevokeModal();
-      await refreshSubjectsList();
+      map.flyTo([r.lat, r.lon], 16, { duration: 0.8 });
+      await loadAndShow(r.lon, r.lat, r.display.split(',').slice(0, 3).join(','));
     } catch (e) {
       console.error(e);
-      alert(`Chyba při revokaci: ${e.message}`);
+      const list = document.getElementById('upcomingList');
+      list.innerHTML = `<div class="error">Chyba geocoderu: ${escapeHtml(e.message)}</div>`;
     } finally {
       btn.disabled = false;
-      btn.textContent = 'Zrušit vyhlášení';
+      btn.textContent = 'Vyhledat';
     }
-  });
+  }
+
+  // ===========================================================================
+  // Helpers
+  // ===========================================================================
 
   function escapeHtml(s) {
     return String(s)
@@ -945,9 +496,31 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
   }
 
-  // Initial load
-  refreshSubjectsList();
+  function formatTimeRange(fromIso, toIso) {
+    const from = new Date(fromIso);
+    const to = new Date(toIso);
+    const sameDay = from.toDateString() === to.toDateString();
+    const opts = { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' };
+    const fromText = from.toLocaleString('cs-CZ', opts);
+    if (sameDay) {
+      const toText = to.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+      return `${fromText}–${toText}`;
+    }
+    const toText = to.toLocaleString('cs-CZ', opts);
+    return `${fromText} → ${toText}`;
+  }
 
+  function relativeWhen(when, now) {
+    const ms = when - now;
+    if (ms <= 0) return '';
+    const days = Math.floor(ms / (24 * 3600 * 1000));
+    const hours = Math.floor(ms / (3600 * 1000));
+    if (days >= 2) return `(za ${days} dní)`;
+    if (days === 1) return '(zítra)';
+    if (hours >= 1) return `(za ${hours} h)`;
+    const mins = Math.max(1, Math.floor(ms / 60000));
+    return `(za ${mins} min)`;
+  }
 </script>
 </body>
 </html>

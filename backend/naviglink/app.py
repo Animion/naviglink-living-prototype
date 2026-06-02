@@ -17,7 +17,7 @@ CORS otevřený (pilot scope; production by mělo per-origin whitelist).
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query
@@ -177,6 +177,38 @@ def query_active(
         },
         "matches": [s.model_dump(mode="json") for s in subjects],
         "count": len(subjects),
+    }
+
+
+@app.get("/upcoming")
+def query_upcoming(
+    lon: float = Query(..., description="GPS longitude (WGS84)"),
+    lat: float = Query(..., description="GPS latitude (WGS84)"),
+    days: int = Query(7, ge=1, le=30, description="Kolik dní dopředu hledat"),
+    kind: Optional[str] = Query("subject", description="Filter by kind"),
+) -> dict:
+    """Subjekty, které platí teď nebo začnou v nejbližších `days` dnech.
+
+    Použití: public dashboard — občan zadá adresu/klikne na mapu, dostane
+    chronologický seznam blokových čištění (a jiných omezení) na nejbližší týden.
+
+    Vrací seřazeno podle `valid_from` ascending; klient si `active_now` odvodí
+    porovnáním `valid_from <= now < valid_to`.
+    """
+    now = datetime.now(timezone.utc)
+    to = now + timedelta(days=days)
+
+    subjects = store.query_in_range(lon, lat, now, to, kind=kind)
+    return {
+        "query": {
+            "lon": lon,
+            "lat": lat,
+            "from": now.isoformat(),
+            "to": to.isoformat(),
+            "kind": kind,
+        },
+        "count": len(subjects),
+        "subjects": [s.model_dump(mode="json") for s in subjects],
     }
 
 
