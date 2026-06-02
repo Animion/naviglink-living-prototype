@@ -28,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -250,6 +251,20 @@ private fun AlertPane(
         textAlign = TextAlign.Center,
     )
     Spacer(Modifier.height(16.dp))
+
+    // Mapa polygonu + driverovy polohy. Bez ní by driver viděl jen jméno ulice
+    // a musel by si v hlavě představit, kde to je. S mapou to vidí na pár vteřin.
+    SubjectMapView(
+        subject = subject,
+        driverLat = state.driverLat,
+        driverLon = state.driverLon,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(240.dp)
+            .clip(RoundedCornerShape(8.dp)),
+    )
+    Spacer(Modifier.height(16.dp))
+
     Text(
         text = "$ulice",
         fontSize = 24.sp,

@@ -31,6 +31,8 @@ sealed interface DriverUiState {
     data class Alert(
         val checkedAt: Instant,
         val matches: List<SignedSubject>,
+        val driverLat: Double? = null,
+        val driverLon: Double? = null,
     ) : DriverUiState
     data object SendingReaction : DriverUiState
     data class ReactionSent(val reaction: String) : DriverUiState
@@ -90,7 +92,7 @@ class DriverViewModel(private val app: NaviglinkApp) : ViewModel() {
                 _state.value = if (matches.isEmpty()) {
                     DriverUiState.NoAlert(now, loc.longitude, loc.latitude)
                 } else {
-                    DriverUiState.Alert(now, matches)
+                    DriverUiState.Alert(now, matches, loc.latitude, loc.longitude)
                 }
             } catch (e: Exception) {
                 _state.value = DriverUiState.Error("Server: ${e.message ?: "neznámá chyba"}")
@@ -130,6 +132,10 @@ class DriverViewModel(private val app: NaviglinkApp) : ViewModel() {
                     _state.value = DriverUiState.ParkSnapshotSent(
                         loc.longitude, loc.latitude, validForHours
                     )
+                    // E: Hned po uložení snapshot spusť jednorázový alerts check
+                    // mimo periodic cycle. Pokud na poloze něco platí, driver
+                    // dostane notifikaci do pár sekund — nečeká 15 min.
+                    AlertsPollWorker.runOnce(app)
                 } else {
                     _state.value = DriverUiState.Error("Server park_snapshot nepřijal")
                 }

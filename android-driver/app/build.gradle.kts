@@ -15,6 +15,11 @@ android {
         targetSdk = 34           // Android 14
         versionCode = 1
         versionName = "0.1.0"
+
+        // MapTiler API key (free tier, ~100k tile fetches/měsíc).
+        // Pro pilot s pár drivery bohatě stačí. Při bližení produkce přesunout
+        // do gradle.properties + .gitignore, nebo CI secret.
+        buildConfigField("String", "MAPTILER_KEY", "\"APR27qjEaguTJBTnt8X5\"")
     }
 
     buildTypes {
@@ -90,6 +95,9 @@ dependencies {
 
     // === WorkManager (periodic polling /alerts) ===
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+
+    // === Mapa: MapLibre GL Native (OSS fork Mapbox GL pre-licence change) ===
+    implementation("org.maplibre.gl:android-sdk:11.5.2")
 
     // === Testing ===
     testImplementation("junit:junit:4.13.2")
