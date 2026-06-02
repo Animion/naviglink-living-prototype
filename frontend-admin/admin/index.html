@@ -693,4 +693,261 @@
 
   function showPublishedSubject(subj, opts = {}) {
     const coords = subj.payload?.geometry?.coordinates?.[0];
-    if (!coords) r
+    if (!coords) return;
+    const latlngs = coords.map(([lon, lat]) => [lat, lon]);
+    const isRevoked = !!opts.revoked;
+    const style = isRevoked
+      ? { color: '#8a8a8a', weight: 1, dashArray: '6,4', fillColor: '#8a8a8a', fillOpacity: 0.08 }
+      : { color: '#2d8050', weight: 2, fillColor: '#2d8050', fillOpacity: 0.2 };
+    const banner = isRevoked
+      ? '<br><span style="color:#b03030;font-size:11px;">ZRUŠENO</span>'
+      : '';
+    L.polygon(latlngs, style)
+      .bindPopup(`<strong>${subj.payload.ulice}</strong>${banner}<br>
+                  ${subj.valid_from.slice(0, 16).replace('T', ' ')} →
+                  ${subj.valid_to.slice(0, 16).replace('T', ' ')}<br>
+                  <small style="font-family:monospace">${subj.id}</small>`)
+      .addTo(publishedLayer);
+  }
+
+  // ===========================================================================
+  // UI handlers
+  // ===========================================================================
+
+  const { pubHex, privHex } = loadOrGenerateKey();
+  document.getElementById('identityLabel').textContent =
+    'did:key:' + pubHex.slice(0, 16) + '…';
+
+  apiHealth().then(h => {
+    if (!h) {
+      document.getElementById('connDot').style.background = 'var(--danger)';
+      document.getElementById('identityLabel').textContent += ' (server offline)';
+    }
+  });
+
+  document.getElementById('btnClear').addEventListener('click', clearDrawing);
+
+  document.getElementById('btnResetKeys').addEventListener('click', () => {
+    if (!confirm('Smazat klíče a vytvořit novou identitu? Budoucí dotazy nebudou identifikovat vás jako autora předchozích subjektů.')) return;
+    localStorage.removeItem(KEY_STORAGE);
+    localStorage.removeItem('naviglink_my_subjects'); // legacy klíč z v1
+    location.reload();
+  });
+
+  document.getElementById('btnRefresh').addEventListener('click', refreshSubjectsList);
+
+  document.getElementById('btnPublish').addEventListener('click', async () => {
+    if (drawing.length < 3) {
+      alert('Nakresli aspoň 3 body.');
+      return;
+    }
+    const ulice = document.getElementById('ulice').value.trim();
+    const datum = document.getElementById('datum').value;     // "2026-06-09"
+    const casOd = document.getElementById('casOd').value;     // "06:00"
+    const casDo = document.getElementById('casDo').value;     // "10:00"
+
+    if (!ulice || !datum || !casOd || !casDo) {
+      alert('Vyplň všechna pole.');
+      return;
+    }
+
+    const btn = document.getElementById('btnPublish');
+    btn.disabled = true;
+    btn.textContent = 'Podepisuju a posílám…';
+
+    try {
+      const validFrom = new Date(`${datum}T${casOd}:00Z`);
+      const validTo   = new Date(`${datum}T${casDo}:00Z`);
+
+      // Uzavřít polygon (přidat první bod na konec, jak vyžaduje GeoJSON)
+      const closed = [...drawing, drawing[0]];
+
+      const subject = await buildAndSignSubject({
+        ulice, validFrom, validTo,
+        polygon: closed,
+        pubHex, privHex,
+      });
+
+      console.log('Subject ready:', subject);
+
+      const result = await apiPostSubject(subject);
+      console.log('Server response:', result);
+
+      document.getElementById('drawStatus').textContent =
+        `Vyhlášeno: ${ulice}, ID ${subject.id.slice(0, 30)}…`;
+      document.getElementById('drawStatus').className = 'status success';
+
+      showPublishedSubject(subject);
+      clearDrawing();
+      refreshSubjectsList();
+    } catch (e) {
+      console.error(e);
+      document.getElementById('drawStatus').textContent = `Chyba: ${e.message}`;
+      document.getElementById('drawStatus').className = 'status error';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Vyhlásit';
+    }
+  });
+
+  async function refreshSubjectsList() {
+    const list = document.getElementById('subjectsList');
+    list.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">Načítám…</div>';
+
+    // Vyčistit existující publikované polygony z mapy a překreslit znovu.
+    publishedLayer.clearLayers();
+
+    try {
+      const [subjects, revocations] = await Promise.all([
+        apiListMine(pubHex),
+        apiListMyRevocations(pubHex),
+      ]);
+
+      // Mapa target_id → revokace (poslední vyhrává, ale obvykle bude jen jedna)
+      const revokeMap = new Map();
+      for (const rev of revocations) {
+        const tgt = rev.references?.target;
+        if (tgt) revokeMap.set(tgt, rev);
+      }
+
+      if (subjects.length === 0) {
+        list.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">Žádné aktivní subjekty.</div>';
+        return;
+      }
+      list.innerHTML = '';
+      for (const s of subjects) {
+        const ulice = s.payload?.ulice || '(bez popisu)';
+        const rev = revokeMap.get(s.id);
+        const isRevoked = !!rev;
+
+        const div = document.createElement('div');
+        div.className = 'subject-card' + (isRevoked ? ' revoked' : '');
+
+        const timeRange = `${new Date(s.valid_from).toLocaleString('cs-CZ')} → ${new Date(s.valid_to).toLocaleString('cs-CZ')}`;
+
+        let html = `
+          <div class="ulice">${escapeHtml(ulice)}</div>
+          <div class="time">${timeRange}</div>
+          <div class="id">${escapeHtml(s.id)}</div>
+        `;
+
+        if (isRevoked) {
+          const reason = rev.payload?.reason || '(bez důvodu)';
+          const revokedAt = new Date(rev.valid_from).toLocaleString('cs-CZ');
+          html += `
+            <div class="revoked-banner">
+              <strong>Zrušeno ${escapeHtml(revokedAt)}:</strong>
+              ${escapeHtml(reason)}
+            </div>
+          `;
+        } else {
+          html += `
+            <div class="actions">
+              <button class="danger btn-revoke"
+                      data-subject-id="${escapeHtml(s.id)}"
+                      data-ulice="${escapeHtml(ulice)}">
+                Zrušit vyhlášení
+              </button>
+            </div>
+          `;
+        }
+
+        div.innerHTML = html;
+        list.appendChild(div);
+
+        // Polygon na mapě — revokované zobrazím šedě, aktivní normálně
+        showPublishedSubject(s, { revoked: isRevoked });
+      }
+
+      // Připojit handlery na všechna nově vykreslená tlačítka
+      for (const btn of list.querySelectorAll('.btn-revoke')) {
+        btn.addEventListener('click', () => {
+          openRevokeModal({
+            subjectId: btn.dataset.subjectId,
+            ulice: btn.dataset.ulice,
+          });
+        });
+      }
+    } catch (e) {
+      list.innerHTML = `<div style="color:var(--danger);font-size:13px;">Chyba: ${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  // ===========================================================================
+  // Revoke modal
+  // ===========================================================================
+
+  function openRevokeModal({ subjectId, ulice }) {
+    document.getElementById('revokeTargetUlice').textContent = ulice;
+    document.getElementById('revokeTargetId').textContent = subjectId;
+    const reasonField = document.getElementById('revokeReason');
+    reasonField.value = '';
+    const modal = document.getElementById('revokeModal');
+    modal.classList.add('open');
+    modal.dataset.targetId = subjectId;
+    setTimeout(() => reasonField.focus(), 50);
+  }
+
+  function closeRevokeModal() {
+    const modal = document.getElementById('revokeModal');
+    modal.classList.remove('open');
+    delete modal.dataset.targetId;
+  }
+
+  document.getElementById('btnRevokeCancel').addEventListener('click', closeRevokeModal);
+  document.getElementById('revokeModal').addEventListener('click', (e) => {
+    if (e.target.id === 'revokeModal') closeRevokeModal();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.getElementById('revokeModal').classList.contains('open')) {
+      closeRevokeModal();
+    }
+  });
+
+  document.getElementById('btnRevokeConfirm').addEventListener('click', async () => {
+    const modal = document.getElementById('revokeModal');
+    const targetId = modal.dataset.targetId;
+    const reason = document.getElementById('revokeReason').value.trim();
+
+    if (!targetId) { closeRevokeModal(); return; }
+    if (!reason) {
+      alert('Důvod zrušení je povinný.');
+      return;
+    }
+
+    const btn = document.getElementById('btnRevokeConfirm');
+    btn.disabled = true;
+    btn.textContent = 'Podepisuji…';
+
+    try {
+      const rev = await buildAndSignRevocation({
+        targetId: targetId,
+        reason: reason,
+        pubHex: pubHex,
+        privHex: privHex,
+      });
+      btn.textContent = 'Odesílám…';
+      await apiPostSubject(rev);
+      closeRevokeModal();
+      await refreshSubjectsList();
+    } catch (e) {
+      console.error(e);
+      alert(`Chyba při revokaci: ${e.message}`);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Zrušit vyhlášení';
+    }
+  });
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+  }
+
+  // Initial load
+  refreshSubjectsList();
+
+</script>
+</body>
+</html>
