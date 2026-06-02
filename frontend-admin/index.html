@@ -167,10 +167,94 @@
     padding: 10px 12px;
     margin-bottom: 8px;
     font-size: 13px;
+    position: relative;
   }
   .subject-card .ulice { font-weight: 600; }
   .subject-card .time { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
-  .subject-card .id { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+  .subject-card .id { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-top: 4px; word-break: break-all; }
+  .subject-card .actions { margin-top: 8px; }
+  .subject-card .actions button {
+    font-size: 12px;
+    padding: 4px 10px;
+  }
+  .subject-card.revoked {
+    opacity: 0.55;
+    background: rgba(176, 48, 48, 0.04);
+    border-color: rgba(176, 48, 48, 0.3);
+  }
+  .subject-card.revoked .ulice { text-decoration: line-through; }
+  .subject-card.revoked .revoked-banner {
+    margin-top: 6px;
+    padding: 4px 8px;
+    background: rgba(176, 48, 48, 0.08);
+    border-left: 3px solid var(--danger);
+    font-size: 12px;
+    color: var(--danger);
+  }
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal {
+    background: var(--bg-panel);
+    border-radius: 8px;
+    padding: 20px 24px;
+    width: 420px;
+    max-width: 90vw;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  }
+  .modal h3 { margin: 0 0 12px 0; font-size: 16px; }
+  .modal .target-info {
+    background: rgba(30,96,145,0.06);
+    border-left: 3px solid var(--accent);
+    padding: 8px 10px;
+    margin-bottom: 14px;
+    font-size: 13px;
+  }
+  .modal .target-info .ulice { font-weight: 600; }
+  .modal .target-info .id {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    word-break: break-all;
+  }
+  .modal textarea {
+    width: 100%;
+    min-height: 70px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: var(--font);
+    font-size: 14px;
+    resize: vertical;
+  }
+  .modal .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .modal .modal-actions button.danger-primary {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: white;
+  }
+  .modal .modal-actions button.danger-primary:hover {
+    background: #8a2424;
+    border-color: #8a2424;
+  }
+  .modal .modal-actions button.danger-primary:disabled {
+    background: var(--text-muted);
+    border-color: var(--text-muted);
+    cursor: not-allowed;
+  }
   .help {
     background: rgba(30,96,145,.04);
     border-radius: var(--radius);
@@ -256,6 +340,29 @@
 
   </aside>
 </main>
+
+<div id="revokeModal" class="modal-backdrop">
+  <div class="modal">
+    <h3>Zrušit vyhlášení</h3>
+    <div class="target-info">
+      <div class="ulice" id="revokeTargetUlice">—</div>
+      <div class="id" id="revokeTargetId">—</div>
+    </div>
+    <div class="form-group">
+      <label for="revokeReason">Důvod zrušení (povinné)</label>
+      <textarea id="revokeReason"
+                placeholder="Např. mráz, čištění odloženo na zítra. Technická porucha. Omyl ve vyhlášení."></textarea>
+    </div>
+    <div class="status" style="font-size:12px;">
+      Vyhlášení nebude smazáno — historie zůstává v auditním logu. Vznikne nový
+      podepsaný subjekt typu <code>revocation</code>, který původní subjekt zruší.
+    </div>
+    <div class="modal-actions">
+      <button id="btnRevokeCancel">Zavřít</button>
+      <button id="btnRevokeConfirm" class="danger-primary">Zrušit vyhlášení</button>
+    </div>
+  </div>
+</div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
@@ -400,6 +507,40 @@
   // Build + sign SignedSubject
   // ===========================================================================
 
+  async function buildAndSignRevocation({ targetId, reason, pubHex, privHex }) {
+    const now = new Date();
+    const payload = { reason: reason };
+    const canonObj = {
+      kind: 'revocation',
+      authors: [pubHex],
+      valid_from: formatIsoUtc(now),
+      valid_to: null,
+      references: { target: targetId },
+      payload: payload,
+      sig_scheme: 'ed25519',
+    };
+    const canonStr = canonicalJson(canonObj);
+    const canonBytes = new TextEncoder().encode(canonStr);
+
+    const privBytes = hexToBytes(privHex);
+    const sigBytes = ed.sign(canonBytes, privBytes);
+    const sigB64 = bytesToBase64(sigBytes);
+
+    const id = await computeId(canonBytes);
+
+    return {
+      id: id,
+      kind: 'revocation',
+      authors: [pubHex],
+      signatures: [sigB64],
+      valid_from: formatIsoUtc(now),
+      valid_to: null,
+      references: { target: targetId },
+      payload: payload,
+      sig_scheme: 'ed25519',
+    };
+  }
+
   async function buildAndSignSubject({ ulice, validFrom, validTo, polygon, pubHex, privHex }) {
     const payload = {
       typ: 'blokove_cisteni',
@@ -470,6 +611,16 @@
     return d.subjects;  // pole plných SignedSubject
   }
 
+  async function apiListMyRevocations(pubHex) {
+    // GET /subjects?author=<pubHex>&kind=revocation — pro spárování s subjekty,
+    // abychom v UI zobrazili "Zrušeno: <důvod>" místo skrytí.
+    const url = `${API_HOST}/subjects?author=${encodeURIComponent(pubHex)}&kind=revocation&limit=100`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`GET /subjects (revocations) → ${r.status}`);
+    const d = await r.json();
+    return d.subjects;
+  }
+
   // ===========================================================================
   // Mapa — Leaflet
   // ===========================================================================
@@ -525,14 +676,19 @@
     document.body.classList.add('draw-active');
   });
 
-  function showPublishedSubject(subj) {
+  function showPublishedSubject(subj, opts = {}) {
     const coords = subj.payload?.geometry?.coordinates?.[0];
     if (!coords) return;
     const latlngs = coords.map(([lon, lat]) => [lat, lon]);
-    L.polygon(latlngs, {
-      color: '#2d8050', weight: 2, fillColor: '#2d8050', fillOpacity: 0.2,
-    })
-      .bindPopup(`<strong>${subj.payload.ulice}</strong><br>
+    const isRevoked = !!opts.revoked;
+    const style = isRevoked
+      ? { color: '#8a8a8a', weight: 1, dashArray: '6,4', fillColor: '#8a8a8a', fillOpacity: 0.08 }
+      : { color: '#2d8050', weight: 2, fillColor: '#2d8050', fillOpacity: 0.2 };
+    const banner = isRevoked
+      ? '<br><span style="color:#b03030;font-size:11px;">ZRUŠENO</span>'
+      : '';
+    L.polygon(latlngs, style)
+      .bindPopup(`<strong>${subj.payload.ulice}</strong>${banner}<br>
                   ${subj.valid_from.slice(0, 16).replace('T', ' ')} →
                   ${subj.valid_to.slice(0, 16).replace('T', ' ')}<br>
                   <small style="font-family:monospace">${subj.id}</small>`)
@@ -627,31 +783,146 @@
     publishedLayer.clearLayers();
 
     try {
-      const subjects = await apiListMine(pubHex);
+      const [subjects, revocations] = await Promise.all([
+        apiListMine(pubHex),
+        apiListMyRevocations(pubHex),
+      ]);
+
+      // Mapa target_id → revokace (poslední vyhrává, ale obvykle bude jen jedna)
+      const revokeMap = new Map();
+      for (const rev of revocations) {
+        const tgt = rev.references?.target;
+        if (tgt) revokeMap.set(tgt, rev);
+      }
+
       if (subjects.length === 0) {
         list.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">Žádné aktivní subjekty.</div>';
         return;
       }
       list.innerHTML = '';
       for (const s of subjects) {
-        // Karta v seznamu
         const ulice = s.payload?.ulice || '(bez popisu)';
+        const rev = revokeMap.get(s.id);
+        const isRevoked = !!rev;
+
         const div = document.createElement('div');
-        div.className = 'subject-card';
-        div.innerHTML = `
+        div.className = 'subject-card' + (isRevoked ? ' revoked' : '');
+
+        const timeRange = `${new Date(s.valid_from).toLocaleString('cs-CZ')} → ${new Date(s.valid_to).toLocaleString('cs-CZ')}`;
+
+        let html = `
           <div class="ulice">${escapeHtml(ulice)}</div>
-          <div class="time">${new Date(s.valid_from).toLocaleString('cs-CZ')} → ${new Date(s.valid_to).toLocaleString('cs-CZ')}</div>
+          <div class="time">${timeRange}</div>
           <div class="id">${escapeHtml(s.id)}</div>
         `;
+
+        if (isRevoked) {
+          const reason = rev.payload?.reason || '(bez důvodu)';
+          const revokedAt = new Date(rev.valid_from).toLocaleString('cs-CZ');
+          html += `
+            <div class="revoked-banner">
+              <strong>Zrušeno ${escapeHtml(revokedAt)}:</strong>
+              ${escapeHtml(reason)}
+            </div>
+          `;
+        } else {
+          html += `
+            <div class="actions">
+              <button class="danger btn-revoke"
+                      data-subject-id="${escapeHtml(s.id)}"
+                      data-ulice="${escapeHtml(ulice)}">
+                Zrušit vyhlášení
+              </button>
+            </div>
+          `;
+        }
+
+        div.innerHTML = html;
         list.appendChild(div);
 
-        // Polygon na mapě
-        showPublishedSubject(s);
+        // Polygon na mapě — revokované zobrazím šedě, aktivní normálně
+        showPublishedSubject(s, { revoked: isRevoked });
+      }
+
+      // Připojit handlery na všechna nově vykreslená tlačítka
+      for (const btn of list.querySelectorAll('.btn-revoke')) {
+        btn.addEventListener('click', () => {
+          openRevokeModal({
+            subjectId: btn.dataset.subjectId,
+            ulice: btn.dataset.ulice,
+          });
+        });
       }
     } catch (e) {
       list.innerHTML = `<div style="color:var(--danger);font-size:13px;">Chyba: ${escapeHtml(e.message)}</div>`;
     }
   }
+
+  // ===========================================================================
+  // Revoke modal
+  // ===========================================================================
+
+  function openRevokeModal({ subjectId, ulice }) {
+    document.getElementById('revokeTargetUlice').textContent = ulice;
+    document.getElementById('revokeTargetId').textContent = subjectId;
+    const reasonField = document.getElementById('revokeReason');
+    reasonField.value = '';
+    const modal = document.getElementById('revokeModal');
+    modal.classList.add('open');
+    modal.dataset.targetId = subjectId;
+    setTimeout(() => reasonField.focus(), 50);
+  }
+
+  function closeRevokeModal() {
+    const modal = document.getElementById('revokeModal');
+    modal.classList.remove('open');
+    delete modal.dataset.targetId;
+  }
+
+  document.getElementById('btnRevokeCancel').addEventListener('click', closeRevokeModal);
+  document.getElementById('revokeModal').addEventListener('click', (e) => {
+    if (e.target.id === 'revokeModal') closeRevokeModal();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.getElementById('revokeModal').classList.contains('open')) {
+      closeRevokeModal();
+    }
+  });
+
+  document.getElementById('btnRevokeConfirm').addEventListener('click', async () => {
+    const modal = document.getElementById('revokeModal');
+    const targetId = modal.dataset.targetId;
+    const reason = document.getElementById('revokeReason').value.trim();
+
+    if (!targetId) { closeRevokeModal(); return; }
+    if (!reason) {
+      alert('Důvod zrušení je povinný.');
+      return;
+    }
+
+    const btn = document.getElementById('btnRevokeConfirm');
+    btn.disabled = true;
+    btn.textContent = 'Podepisuji…';
+
+    try {
+      const rev = await buildAndSignRevocation({
+        targetId: targetId,
+        reason: reason,
+        pubHex: pubHex,
+        privHex: privHex,
+      });
+      btn.textContent = 'Odesílám…';
+      await apiPostSubject(rev);
+      closeRevokeModal();
+      await refreshSubjectsList();
+    } catch (e) {
+      console.error(e);
+      alert(`Chyba při revokaci: ${e.message}`);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Zrušit vyhlášení';
+    }
+  });
 
   function escapeHtml(s) {
     return String(s)
