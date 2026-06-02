@@ -249,7 +249,16 @@ class Store:
 
     def _revoked_ids_at(self, subjects: list[SignedSubject],
                          at: datetime) -> set[str]:
-        """Najdi IDs, která jsou revokovaná v čase `at`."""
+        """Najdi IDs, která jsou revokovaná v čase `at`.
+
+        Bezpečnostní pravidlo: revokace platí jen pokud její `authors` se rovnají
+        `authors` původního subjektu. Tj. **kdo subjekt vyhlásil, ten ho může
+        zrušit** — cizí klíč nemůže zrušit cizí vyhlášení.
+
+        SQLite porovnává authors jako JSON text. Pro pilot, kde authors je
+        single-element list, je string equality dostatečná. Multi-author
+        scénáře by potřebovaly JSON normalizaci (sorted), zatím out of scope.
+        """
         if not subjects:
             return set()
         at_iso = _iso(at)
@@ -258,11 +267,13 @@ class Store:
         with self._connect() as conn:
             rows = conn.execute(
                 f"""SELECT r.target_id FROM reference_index r
-                    JOIN subjects s ON s.id = r.subject_id
-                    WHERE s.kind = 'revocation'
+                    JOIN subjects rev ON rev.id = r.subject_id
+                    JOIN subjects tgt ON tgt.id = r.target_id
+                    WHERE rev.kind = 'revocation'
                       AND r.role = 'target'
                       AND r.target_id IN ({placeholders})
-                      AND s.valid_from <= ?""",
+                      AND rev.valid_from <= ?
+                      AND rev.authors = tgt.authors""",
                 (*ids, at_iso),
             ).fetchall()
         return {r["target_id"] for r in rows}

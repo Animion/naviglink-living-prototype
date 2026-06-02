@@ -255,6 +255,14 @@ class PostgresStore:
     def _revoked_ids_at(
         self, subjects: list[SignedSubject], at_utc: datetime
     ) -> set[str]:
+        """Vrátí ID subjektů zrušených platnou revokací k danému času.
+
+        Bezpečnostní pravidlo: revokace platí jen pokud její `authors` se rovnají
+        `authors` původního subjektu. Tj. **kdo subjekt vyhlásil, ten ho může
+        zrušit** — cizí klíč nemůže neutralizovat cizí vyhlášení.
+
+        JSONB equality přes oboustranný `@>` (set inkluze v obou směrech).
+        """
         if not subjects:
             return set()
         ids = [s.id for s in subjects]
@@ -262,11 +270,14 @@ class PostgresStore:
             with conn.cursor() as cur:
                 cur.execute(
                     """SELECT r.target_id FROM reference_index r
-                       JOIN subjects s ON s.id = r.subject_id
-                       WHERE s.kind = 'revocation'
+                       JOIN subjects rev ON rev.id = r.subject_id
+                       JOIN subjects tgt ON tgt.id = r.target_id
+                       WHERE rev.kind = 'revocation'
                          AND r.role = 'target'
                          AND r.target_id = ANY(%s)
-                         AND s.valid_from <= %s""",
+                         AND rev.valid_from <= %s
+                         AND rev.authors @> tgt.authors
+                         AND tgt.authors @> rev.authors""",
                     (ids, at_utc),
                 )
                 return {row[0] for row in cur.fetchall()}

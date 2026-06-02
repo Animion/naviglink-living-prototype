@@ -58,6 +58,23 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def no_cache_for_reads(request, call_next):
+    """Zabrání cachování GET odpovědí — ani v browseru, ani na edge.
+
+    Bez tohoto: revokace vyhlášená v jednom okně se nepromítne do druhého,
+    dokud uživatel nevyčistí cache (Render edge / Cloudflare / browser cache
+    všechny mohou držet starou /subjects odpověď). Pro pilot drak prioritou
+    je čerstvost dat, ne cache hit rate.
+    """
+    response = await call_next(request)
+    if request.method == "GET":
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
