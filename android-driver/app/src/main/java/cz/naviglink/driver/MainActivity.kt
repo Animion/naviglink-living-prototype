@@ -45,10 +45,24 @@ class MainActivity : ComponentActivity() {
         // Při startu okamžitě požádat o location, pokud chybí
         if (!hasLocationPermission()) requestLocation()
 
+        // Android 13+ vyžaduje explicit POST_NOTIFICATIONS runtime permission.
+        // Bez něj všechny notifikace (heads-up i normální) projdou tiše do prázdna.
+        if (!hasNotificationsPermission()) requestNotifications()
+
         // Pokud nás otevřela notifikace s deep linkem naviglink://alert/<id>,
         // rovnou spustíme check, aby driver viděl detail bez dalšího kliku.
         handleAlertIntent(intent)
     }
+
+    private fun hasNotificationsPermission(): Boolean =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true  // pre-Android 13: notifikační permission je auto-granted
+        }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)

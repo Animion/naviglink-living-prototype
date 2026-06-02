@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -29,6 +30,7 @@ import java.util.Locale
  */
 object AlertNotifier {
 
+    private const val TAG = "AlertNotifier"
     private const val DT_PATTERN = "EEEE d. MMMM, HH:mm"
     private val PRAGUE: ZoneId = ZoneId.of("Europe/Prague")
 
@@ -37,12 +39,24 @@ object AlertNotifier {
      *         pokud uživatel notifikační oprávnění odepřel a nic se neudálo.
      */
     fun show(context: Context, subject: SignedSubject): Boolean {
+        Log.i(TAG, "show() called for subject=${subject.id} kind=${subject.kind}")
+
         // Android 13+: POST_NOTIFICATIONS runtime permission
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val granted = ActivityCompat.checkSelfPermission(
                 context, Manifest.permission.POST_NOTIFICATIONS
             ) == PackageManager.PERMISSION_GRANTED
-            if (!granted) return false
+            if (!granted) {
+                Log.w(TAG, "POST_NOTIFICATIONS not granted — notification skipped")
+                return false
+            }
+        }
+
+        // NotificationManagerCompat říká, jestli OS notifikace pro app globálně povoluje
+        val nm = NotificationManagerCompat.from(context)
+        if (!nm.areNotificationsEnabled()) {
+            Log.w(TAG, "Notifications disabled at OS level (areNotificationsEnabled=false)")
+            return false
         }
 
         val street = subject.payload["ulice"]?.jsonPrimitive?.contentOrNull
@@ -82,7 +96,8 @@ object AlertNotifier {
             .setContentIntent(pi)
             .build()
 
-        NotificationManagerCompat.from(context).notify(subject.id.hashCode(), notif)
+        nm.notify(subject.id.hashCode(), notif)
+        Log.i(TAG, "notification posted: id=${subject.id.hashCode()} title='$title'")
         return true
     }
 
