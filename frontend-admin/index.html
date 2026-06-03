@@ -409,14 +409,24 @@
       const div = document.createElement('div');
       div.className = 'subject-card' + (activeNow ? ' active-now' : '');
       div.dataset.subjectId = s.id;
+      const wazeSubtype = s.payload?.waze_subtype;
+      const wazeBadge = wazeSubtype
+        ? `<div style="font-size:10px; color:var(--text-muted); margin-top:2px;">${escapeHtml(wazeSubtype)}</div>`
+        : '';
+      const attribution = s.payload?.attribution
+        ? `<div style="font-size:10px; color:var(--text-muted); margin-top:6px; font-style:italic;">${escapeHtml(s.payload.attribution)}</div>`
+        : '';
+
       div.innerHTML = `
         <div class="ulice">${escapeHtml(s.payload?.ulice || '(bez popisu)')}</div>
         <div class="typ">${escapeHtml(s.payload?.typ || s.kind)}</div>
+        ${wazeBadge}
         <div class="time">
           ${formatTimeRange(s.valid_from, s.valid_to)}
           <span class="relative">${relativeWhen(validFrom, now)}</span>
         </div>
         <div class="id">${escapeHtml(s.id)}</div>
+        ${attribution}
       `;
       div.addEventListener('click', () => {
         const poly = polygonRefs.get(s.id);

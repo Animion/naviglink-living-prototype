@@ -43,10 +43,17 @@ logger = logging.getLogger(__name__)
 # Konfigurace
 # ---------------------------------------------------------------------------
 
-WAZE_FEED_URL = (
+# Feed obsahuje archiv let zpět — bez WHERE bychom importovali staré expirované
+# alerty, které nikdy nepřejdou do public dashboardu (`/upcoming` je filtruje).
+# Filtrujeme aktuální (posledních 24 h) a sortujeme desc pro deterministické pořadí.
+WAZE_FEED_URL_TEMPLATE = (
     "https://gis.brno.cz/ags1/rest/services/Hosted/WazeAlerts/FeatureServer/0/query"
-    "?where=1%3D1&outFields=*&outSR=4326&f=json&resultRecordCount=100"
+    "?where=pubMillis%3E{since_ms}"
+    "&outFields=*&outSR=4326&f=json"
+    "&resultRecordCount=300"
+    "&orderByFields=pubMillis+DESC"
 )
+RECENT_HOURS = 24
 
 # Heuristika valid_to (hodiny od pubMillis) — feed nezadává konec platnosti.
 WAZE_TTL_HOURS: dict[str, float] = {
@@ -178,12 +185,18 @@ def feature_to_subject(feature: dict, keyring: ImporterKeyring) -> SignedSubject
         "thumbs_up": attrs.get("nThumbsUp"),
         "road_type": attrs.get("roadType"),
         "description": attrs.get("reportDescription") or "",
+        # Attribution dle požadavku data.brno.cz: "je nutné citovat WAZE
+        # a City of Brno jako zdroj". Drží se v payloadu, takže klient ji
+        # vidí přímo bez nutnosti rozbalit references.
+        "attribution": "© WAZE Mobile Ltd. via data.brno.cz (Statutární město Brno)",
     }
 
     references = {
         "domain": "traffic_cz",
         "source": SOURCE_URL,
         "source_id": str(waze_uuid),
+        "source_program": "WAZE for Cities",
+        "source_license": "free reuse with attribution",
     }
 
     # Build SignedSubject — sign + compute_id
@@ -223,12 +236,16 @@ def feature_to_subject(feature: dict, keyring: ImporterKeyring) -> SignedSubject
 # ---------------------------------------------------------------------------
 
 async def fetch_waze_features() -> list[dict]:
-    """Pullne aktuální Waze alerty z data.brno.cz."""
+    """Pullne aktuální Waze alerty z data.brno.cz (jen z posledních RECENT_HOURS hodin)."""
     import time
     t0 = time.time()
-    print(f"[importer] fetching {WAZE_FEED_URL}", flush=True)
+    since_dt = datetime.now(timezone.utc) - timedelta(hours=RECENT_HOURS)
+    since_ms = int(since_dt.timestamp() * 1000)
+    url = WAZE_FEED_URL_TEMPLATE.format(since_ms=since_ms)
+    print(f"[importer] fetching alerts since {since_dt.isoformat()}", flush=True)
+    print(f"[importer] url: {url}", flush=True)
     async with httpx.AsyncClient(timeout=30.0) as client:
-        r = await client.get(WAZE_FEED_URL)
+        r = await client.get(url)
         r.raise_for_status()
         data = r.json()
     features = data.get("features", [])
