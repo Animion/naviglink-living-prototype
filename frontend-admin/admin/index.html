@@ -315,6 +315,14 @@
 
   <aside class="sidebar">
 
+    <div id="topBackupWarning" style="display:none; margin-bottom: 18px; padding: 12px 14px; background: rgba(176,48,48,.08); border-left: 3px solid var(--danger); border-radius: var(--radius); font-size: 13px;">
+      <strong>⚠ Tento klíč nemá BIP39 zálohu</strong><br>
+      <span style="color: var(--text-muted); font-size: 12px;">Vytvořen ve starší verzi. Při ztrátě prohlížeče ztratíš identitu i všechna budoucí oprávnění.</span>
+      <div class="button-row" style="margin-top: 10px;">
+        <button id="btnTopReset" class="primary" style="flex: 1; font-size: 13px;">Vytvořit zálohovanou identitu</button>
+      </div>
+    </div>
+
     <section>
       <h2>Nový subjekt</h2>
       <div class="help">
@@ -877,25 +885,31 @@
 
   function updateBackupStatusBanner(hasMnemonic) {
     const el = document.getElementById('backupStatus');
+    const topWarning = document.getElementById('topBackupWarning');
     if (hasMnemonic) {
       el.style.background = 'rgba(45,128,80,.08)';
       el.style.borderLeftColor = 'var(--success)';
       el.innerHTML = '✓ Klíč má zálohu (12 slov)';
+      topWarning.style.display = 'none';
     } else {
       el.style.background = 'rgba(176,48,48,.08)';
       el.style.borderLeftColor = 'var(--danger)';
-      el.innerHTML = '⚠ Tento klíč nemá BIP39 zálohu (vytvořen ve starší verzi). Když ztratíš prohlížeč, ztratíš identitu. Doporučuju <em>Smazat klíče</em> → nová identita dostane BIP39 zálohu.';
+      el.innerHTML = '⚠ Tento klíč nemá BIP39 zálohu — scrollni dolů nebo klikni na varování nahoře.';
+      topWarning.style.display = 'block';
     }
   }
 
   document.getElementById('btnClear').addEventListener('click', clearDrawing);
 
-  document.getElementById('btnResetKeys').addEventListener('click', () => {
+  function resetKeysAndReload() {
     if (!confirm('Smazat klíče a vytvořit novou identitu? Budoucí dotazy nebudou identifikovat vás jako autora předchozích subjektů.')) return;
     localStorage.removeItem(KEY_STORAGE);
     localStorage.removeItem('naviglink_my_subjects'); // legacy klíč z v1
     location.reload();
-  });
+  }
+
+  document.getElementById('btnResetKeys').addEventListener('click', resetKeysAndReload);
+  document.getElementById('btnTopReset').addEventListener('click', resetKeysAndReload);
 
   // ===========================================================================
   // Backup / restore modals
