@@ -363,6 +363,95 @@ def admin_import_brno_waze_status() -> dict:
     }
 
 
+@app.get("/admin/import/brno-waze/stats")
+def admin_import_brno_waze_stats() -> dict:
+    """Detailní statistika importovaných Waze subjektů — pro inspekci dat.
+
+    Vrátí:
+      - počty by status (aktivní teď / budoucí / expirované)
+      - breakdown by waze_type
+      - časový rozsah (nejstarší/nejnovější valid_from)
+      - 5 ukázek subjektů aktivních teď
+    """
+    keyring = importer_brno_waze.get_keyring(store=store)
+    importer_pub_hex = keyring.pub_hex
+    now = datetime.now(timezone.utc)
+
+    subjects = store.list(author=importer_pub_hex, kind="subject", limit=500)
+
+    active_now = []
+    future = []
+    expired = []
+    type_counts: dict[str, int] = {}
+    cities: dict[str, int] = {}
+    min_from: Optional[datetime] = None
+    max_from: Optional[datetime] = None
+
+    for s in subjects:
+        vf = s.valid_from
+        vt = s.valid_to
+        if vf.tzinfo is None:
+            vf = vf.replace(tzinfo=timezone.utc)
+        if vt and vt.tzinfo is None:
+            vt = vt.replace(tzinfo=timezone.utc)
+
+        if min_from is None or vf < min_from:
+            min_from = vf
+        if max_from is None or vf > max_from:
+            max_from = vf
+
+        if vt and vt <= now:
+            expired.append(s)
+        elif vf > now:
+            future.append(s)
+        else:
+            active_now.append(s)
+
+        wt = (s.payload or {}).get("waze_type", "UNKNOWN")
+        type_counts[wt] = type_counts.get(wt, 0) + 1
+
+        city = (s.payload or {}).get("city", "")
+        if city:
+            cities[city] = cities.get(city, 0) + 1
+
+    return {
+        "total": len(subjects),
+        "active_now": len(active_now),
+        "future": len(future),
+        "expired": len(expired),
+        "by_waze_type": dict(sorted(type_counts.items(), key=lambda x: -x[1])),
+        "by_city": dict(sorted(cities.items(), key=lambda x: -x[1])[:10]),
+        "oldest_valid_from": min_from.isoformat() if min_from else None,
+        "newest_valid_from": max_from.isoformat() if max_from else None,
+        "checked_at": now.isoformat(),
+        "samples_active_now": [
+            {
+                "id": s.id,
+                "ulice": (s.payload or {}).get("ulice"),
+                "city": (s.payload or {}).get("city"),
+                "waze_type": (s.payload or {}).get("waze_type"),
+                "waze_subtype": (s.payload or {}).get("waze_subtype"),
+                "valid_from": s.valid_from.isoformat(),
+                "valid_to": s.valid_to.isoformat() if s.valid_to else None,
+                "polygon_center": _polygon_center((s.payload or {}).get("geometry")),
+            }
+            for s in active_now[:5]
+        ],
+    }
+
+
+def _polygon_center(geom: Optional[dict]) -> Optional[dict]:
+    """Vrátí přibližný střed polygonu pro UI debug."""
+    if not geom or geom.get("type") != "Polygon":
+        return None
+    ring = (geom.get("coordinates") or [[]])[0]
+    if not ring:
+        return None
+    lons = [p[0] for p in ring]
+    lats = [p[1] for p in ring]
+    return {"lon": round(sum(lons) / len(lons), 5), "lat": round(sum(lats) / len(lats), 5)}
+
+
 @app.get("/audit/{subject_id}")
 def audit_log(subject_id: str) -> dict:
     """Vše, co subject_id zmiňuje — jako subjekt sám nebo přes references."""
