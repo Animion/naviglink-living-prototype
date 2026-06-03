@@ -48,10 +48,8 @@ fun HomeScreen(
     onRequestNotificationPermission: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val pubHexShort = remember(viewModel) {
-        val h = viewModel.publicKeyHex
-        "did:key:" + h.take(16) + "…"
-    }
+    val pubHex by viewModel.publicKeyHexFlow.collectAsStateWithLifecycle()
+    val pubHexShort = "did:key:" + pubHex.take(16) + "…"
 
     var showBackup by remember { mutableStateOf(false) }
     var showRestore by remember { mutableStateOf(false) }
@@ -59,7 +57,7 @@ fun HomeScreen(
     if (showBackup) {
         BackupMnemonicDialog(
             mnemonic = viewModel.mnemonic,
-            publicKeyHex = viewModel.publicKeyHex,
+            publicKeyHex = pubHex,
             onDismiss = { showBackup = false },
         )
     }
@@ -67,13 +65,9 @@ fun HomeScreen(
         RestoreMnemonicDialog(
             onConfirm = { mnemonic ->
                 viewModel.restoreFromMnemonic(mnemonic)
+                // ViewModel sám přechází na IdentityRestored state.
+                // Tady jen zavřeme dialog a UI samo zobrazí potvrzovací pane.
                 showRestore = false
-                // Refresh activity so identity, polling worker key, ViewModel
-                // and UI re-read the new pubHex from keystore.
-                (viewModel as? DriverViewModel)?.let { /* no-op, recompose driven by recreation */ }
-                // Quickest UX: trigger Idle so the user sees new state. Restart
-                // of the activity by user (or system process) will pick up new key.
-                viewModel.resetToIdle()
             },
             onDismiss = { showRestore = false },
         )
@@ -164,6 +158,7 @@ private fun StateContent(
         is DriverUiState.ReactionSent -> ReactionSentPane(state.reaction, onReset)
         is DriverUiState.SendingParkSnapshot -> Working("Posílám polohu…")
         is DriverUiState.ParkSnapshotSent -> ParkSnapshotSentPane(state, onRunAlertsWorker, onReset)
+        is DriverUiState.IdentityRestored -> IdentityRestoredPane(state, onReset)
         is DriverUiState.Error -> ErrorPane(state.message, onCheckNow)
     }
 }
@@ -358,6 +353,47 @@ private fun AlertPane(
         fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f),
     )
+}
+
+@Composable
+private fun IdentityRestoredPane(
+    state: DriverUiState.IdentityRestored,
+    onReset: () -> Unit,
+) {
+    Text(
+        text = "✓ Identita obnovena",
+        fontSize = 28.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = Color(0xFF2D8050),
+        textAlign = TextAlign.Center,
+    )
+    Spacer(Modifier.height(16.dp))
+    Text(
+        text = "Aplikace teď podepisuje touto identitou:",
+        fontSize = 14.sp,
+        textAlign = TextAlign.Center,
+        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f),
+    )
+    Spacer(Modifier.height(8.dp))
+    Text(
+        text = "did:key:" + state.publicKeyHex.take(24) + "…",
+        fontSize = 13.sp,
+        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+        textAlign = TextAlign.Center,
+        color = MaterialTheme.colorScheme.onBackground,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    )
+    Spacer(Modifier.height(16.dp))
+    Text(
+        text = "Pokud se tento klíč shoduje s tvou identitou v admin webu, BIP39 obnova proběhla správně.",
+        fontSize = 13.sp,
+        textAlign = TextAlign.Center,
+        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+    )
+    Spacer(Modifier.height(40.dp))
+    BigButton(text = "Pokračovat", onClick = onReset)
 }
 
 @Composable

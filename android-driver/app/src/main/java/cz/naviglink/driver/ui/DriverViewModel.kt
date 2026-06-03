@@ -42,6 +42,7 @@ sealed interface DriverUiState {
         val lat: Double,
         val validForHours: Long,
     ) : DriverUiState
+    data class IdentityRestored(val publicKeyHex: String) : DriverUiState
     data class Error(val message: String) : DriverUiState
 }
 
@@ -50,20 +51,28 @@ class DriverViewModel(private val app: NaviglinkApp) : ViewModel() {
     private val _state = MutableStateFlow<DriverUiState>(DriverUiState.Idle)
     val state: StateFlow<DriverUiState> = _state.asStateFlow()
 
-    /** Vrací hex public klíče identitu pro zobrazení v UI ("did:key:abc..."). */
-    val publicKeyHex: String get() = app.keystore.publicKeyHex
+    // Reactive public key — keystore-backed, ale jako StateFlow,
+    // aby Compose UI dostalo recomposition trigger při změně (restore).
+    private val _publicKeyHex = MutableStateFlow(app.keystore.publicKeyHex)
+    val publicKeyHexFlow: StateFlow<String> = _publicKeyHex.asStateFlow()
+
+    /** Aktuální hex public key (snapshot, ne reactive). */
+    val publicKeyHex: String get() = _publicKeyHex.value
 
     /** Vrací BIP39 mnemonic (12 slov), pokud existuje. Klíče ze starší verze vrátí null. */
     val mnemonic: String? get() = app.keystore.getMnemonicOrNull()
 
     /**
-     * Obnoví klíč z 12-slovní BIP39 fráze. Po úspěchu UI musí být refreshed
-     * (pubHex se změnil) — volající má zavolat resetToIdle nebo restart aktivity.
+     * Obnoví klíč z 12-slovní BIP39 fráze. Po úspěchu update UI state
+     * na IdentityRestored, aby uživatel viděl potvrzení a nový pubHex.
      *
      * @throws Exception při neplatné frázi (z BIP39 validate)
      */
     fun restoreFromMnemonic(mnemonic: String) {
         app.keystore.restoreFromMnemonic(mnemonic)
+        val newPubHex = app.keystore.publicKeyHex
+        _publicKeyHex.value = newPubHex
+        _state.value = DriverUiState.IdentityRestored(newPubHex)
     }
 
     fun onResume() {
