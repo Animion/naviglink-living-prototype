@@ -61,6 +61,16 @@ CREATE TABLE IF NOT EXISTS reference_index (
 
 CREATE INDEX IF NOT EXISTS idx_ref_target ON reference_index (target_id);
 CREATE INDEX IF NOT EXISTS idx_ref_role_target ON reference_index (role, target_id);
+
+CREATE TABLE IF NOT EXISTS fcm_tokens (
+    author_hex   TEXT NOT NULL,
+    fcm_token    TEXT NOT NULL,
+    platform     TEXT NOT NULL DEFAULT 'android',
+    registered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (author_hex, fcm_token)
+);
+
+CREATE INDEX IF NOT EXISTS idx_fcm_author ON fcm_tokens (author_hex);
 """
 
 
@@ -251,6 +261,44 @@ class PostgresStore:
         matched = [s for s in candidates if _point_in_subject_geometry(s, lon, lat)]
         revoked_ids = self._revoked_ids_at(matched, at_utc)
         return [s for s in matched if s.id not in revoked_ids]
+
+    # ------------------------------------------------------------------------
+    # FCM token registry (push notifikace)
+    # ------------------------------------------------------------------------
+
+    def register_fcm_token(self, author_hex: str, fcm_token: str, platform: str = "android") -> None:
+        """Uloží FCM token pro autora. Idempotentní (UPSERT).
+
+        Když driver app pošle nový token, my si ho asociujeme s jeho author_hex
+        (Ed25519 public key). Při novém subjektu vystrojíme push na všechny
+        tokeny autorů, kteří mají aktivní park_snapshot na zasahované poloze.
+        """
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO fcm_tokens (author_hex, fcm_token, platform)
+                       VALUES (%s, %s, %s)
+                       ON CONFLICT (author_hex, fcm_token) DO UPDATE
+                         SET registered_at = NOW(),
+                             platform = EXCLUDED.platform""",
+                    (author_hex, fcm_token, platform),
+                )
+
+    def get_fcm_tokens_for(self, author_hex: str) -> list[str]:
+        """Vrátí seznam FCM tokenů registrovaných pro autora (může mít víc zařízení)."""
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT fcm_token FROM fcm_tokens WHERE author_hex = %s",
+                    (author_hex,),
+                )
+                return [row[0] for row in cur.fetchall()]
+
+    def delete_fcm_token(self, fcm_token: str) -> None:
+        """Smaže token (např. když FCM hlásí, že je neplatný — odinstalace appky)."""
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM fcm_tokens WHERE fcm_token = %s", (fcm_token,))
 
     def query_in_range(
         self,

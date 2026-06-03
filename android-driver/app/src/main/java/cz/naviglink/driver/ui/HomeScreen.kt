@@ -105,6 +105,8 @@ fun HomeScreen(
                 onRunAlertsWorker = viewModel::runAlertsCheckNow,
                 onShowBackup = { showBackup = true },
                 onShowRestore = { showRestore = true },
+                onStartEventStream = viewModel::startEventStream,
+                onStopEventStream = viewModel::stopEventStream,
                 onRequestLocation = onRequestLocationPermission,
                 onRequestNotifications = onRequestNotificationPermission,
             )
@@ -143,11 +145,16 @@ private fun StateContent(
     onRunAlertsWorker: () -> Unit,
     onShowBackup: () -> Unit,
     onShowRestore: () -> Unit,
+    onStartEventStream: () -> Unit,
+    onStopEventStream: () -> Unit,
     onRequestLocation: () -> Unit,
     onRequestNotifications: () -> Unit,
 ) {
     when (state) {
-        is DriverUiState.Idle -> IdlePane(onCheckNow, onSendParkSnapshot, onShowBackup, onShowRestore)
+        is DriverUiState.Idle -> IdlePane(
+            onCheckNow, onSendParkSnapshot, onShowBackup, onShowRestore,
+            onStartEventStream, onStopEventStream,
+        )
         is DriverUiState.NeedsLocationPermission ->
             NeedsPermissionPane("Pro zjištění upozornění je potřeba povolit polohu.", onRequestLocation)
         is DriverUiState.CheckingLocation -> Working("Zjišťuji polohu…")
@@ -169,6 +176,8 @@ private fun IdlePane(
     onSendParkSnapshot: () -> Unit,
     onShowBackup: () -> Unit,
     onShowRestore: () -> Unit,
+    onStartEventStream: () -> Unit,
+    onStopEventStream: () -> Unit,
 ) {
     Text(
         text = "Připraveno.",
@@ -199,6 +208,23 @@ private fun IdlePane(
         textAlign = TextAlign.Center,
         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
     )
+
+    Spacer(Modifier.height(24.dp))
+    // SSE live sledování — driver dostane alert ihned, bez čekání 15 min.
+    // Service drží otevřené spojení s backendem (foreground notif "Naviglink sleduje").
+    OutlinedButton(
+        onClick = onStartEventStream,
+        modifier = Modifier.fillMaxWidth().height(48.dp),
+    ) {
+        Text("Spustit live sledování (SSE)", fontSize = 14.sp)
+    }
+    Spacer(Modifier.height(6.dp))
+    androidx.compose.material3.TextButton(
+        onClick = onStopEventStream,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text("Zastavit live sledování", fontSize = 13.sp)
+    }
 
     Spacer(Modifier.height(24.dp))
     // Klíč backup/restore — vždy přístupné. Doporučeno hned po prvním spuštění.

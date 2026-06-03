@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "758476988676",
+    "project_id": "naviglink-driver",
+    "storage_bucket": "naviglink-driver.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:758476988676:android:3c4870988ce769ba273051",
+        "android_client_info": {
+          "package_name": "cz.naviglink.driver.debug"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBmov3HOtT69ahHsmiwP6wouGXf5QyIc4Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -13,6 +13,7 @@
     <!-- Foreground service pro sledování polohy (Android 10+) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <!-- Notifikace (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -51,6 +52,12 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="location" />
+
+        <service
+            android:name=".service.EventStreamService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
     </application>
 

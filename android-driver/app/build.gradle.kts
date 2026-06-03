@@ -78,6 +78,9 @@ dependencies {
     implementation("io.ktor:ktor-client-content-negotiation:2.3.12")
     implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.12")
 
+    // === SSE klient (OkHttp) — pro real-time push z backendu ===
+    implementation("com.squareup.okhttp3:okhttp-sse:4.12.0")
+
     // === Serialization ===
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 

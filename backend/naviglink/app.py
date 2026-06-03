@@ -20,12 +20,14 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from .model import SignedSubject
 from .identifier import compute_id, verify_id
+from . import events
 
 
 # ---------------------------------------------------------------------------
@@ -62,13 +64,11 @@ app.add_middleware(
 async def no_cache_for_reads(request, call_next):
     """Zabrání cachování GET odpovědí — ani v browseru, ani na edge.
 
-    Bez tohoto: revokace vyhlášená v jednom okně se nepromítne do druhého,
-    dokud uživatel nevyčistí cache (Render edge / Cloudflare / browser cache
-    všechny mohou držet starou /subjects odpověď). Pro pilot drak prioritou
-    je čerstvost dat, ne cache hit rate.
+    Skipuje /events (SSE stream), který má vlastní headers a nesmí být
+    přepisován middleware.
     """
     response = await call_next(request)
-    if request.method == "GET":
+    if request.method == "GET" and not request.url.path.startswith("/events"):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
@@ -91,7 +91,7 @@ class SubmitResponse(BaseModel):
 
 
 @app.post("/subjects", response_model=SubmitResponse)
-def submit_subject(subject: SignedSubject) -> SubmitResponse:
+async def submit_subject(subject: SignedSubject) -> SubmitResponse:
     """Přijmi podepsaný SignedSubject.
 
     Postup:
@@ -116,6 +116,19 @@ def submit_subject(subject: SignedSubject) -> SubmitResponse:
 
     # 3) Store
     store.put(subject)
+
+    # 4) Side effect: pokud je to nový "subject", broadcast event přes SSE
+    # všem driverům, kteří mají aktivní park_snapshot uvnitř polygonu.
+    # Pokud žádný driver není připojen, broadcast je no-op (in-memory pub-sub).
+    if subject.kind == "subject":
+        try:
+            result = await events.broadcast_alerts_for_new_subject(store, subject)
+            import logging
+            logging.getLogger(__name__).info("SSE broadcast for %s: %s", subject.id, result)
+        except Exception as e:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).warning("SSE broadcast failed (subject still stored): %s", e)
+
     return SubmitResponse(id=subject.id, verified=True, stored=True)
 
 
@@ -210,6 +223,39 @@ def query_upcoming(
         "count": len(subjects),
         "subjects": [s.model_dump(mode="json") for s in subjects],
     }
+
+
+@app.get("/events")
+async def event_stream(
+    request: Request,
+    author: str = Query(..., description="Hex public key driveru — k identifikaci streamů"),
+) -> StreamingResponse:
+    """SSE stream pro real-time alerty.
+
+    Driver app drží toto spojení otevřené (přes foreground service v Androidu).
+    Když magistrát vyhlásí nový subjekt pokrývající driverův park_snapshot,
+    backend ihned posílá event přes tento stream.
+
+    Format eventu (line-delimited SSE):
+        data: {"type":"alert","subject_id":"naviglink:...","ulice":"Veveří",...}\\n\\n
+
+    Klient odpojuje zavřením spojení. Backend pozná disconnect přes
+    `request.is_disconnected()` (FastAPI middleware) nebo přes CancelledError v event_stream().
+
+    Headers nakonfigurované pro správné SSE chování:
+      - Content-Type: text/event-stream
+      - Cache-Control: no-cache
+      - X-Accel-Buffering: no (zablokuje nginx buffering, pokud je za proxy)
+    """
+    return StreamingResponse(
+        events.event_stream(author),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @app.get("/alerts")

@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import cz.naviglink.driver.NaviglinkApp
 import cz.naviglink.driver.data.SignedSubject
+import cz.naviglink.driver.service.EventStreamService
 import cz.naviglink.driver.work.AlertsPollWorker
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -199,6 +200,20 @@ class DriverViewModel(private val app: NaviglinkApp) : ViewModel() {
      */
     fun runAlertsCheckNow() {
         AlertsPollWorker.runOnce(app)
+    }
+
+    /**
+     * Spustí foreground service s SSE spojením na backend — real-time alerty.
+     * Doplňuje WorkManager polling (který běží i bez tohoto): když je service
+     * aktivní, alerty přijdou do několika sekund místo 15 min.
+     */
+    fun startEventStream() {
+        EventStreamService.start(app)
+    }
+
+    /** Vypne SSE foreground service. WorkManager polling stále běží na pozadí. */
+    fun stopEventStream() {
+        EventStreamService.stop(app)
     }
 
     companion object {

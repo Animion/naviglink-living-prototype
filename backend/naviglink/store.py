@@ -62,6 +62,15 @@ CREATE TABLE IF NOT EXISTS reference_index (
 
 CREATE INDEX IF NOT EXISTS idx_ref_target ON reference_index (target_id);
 CREATE INDEX IF NOT EXISTS idx_ref_role_target ON reference_index (role, target_id);
+
+CREATE TABLE IF NOT EXISTS fcm_tokens (
+    author_hex    TEXT NOT NULL,
+    fcm_token     TEXT NOT NULL,
+    platform      TEXT NOT NULL DEFAULT 'android',
+    registered_at TEXT NOT NULL,
+    PRIMARY KEY (author_hex, fcm_token)
+);
+CREATE INDEX IF NOT EXISTS idx_fcm_author ON fcm_tokens (author_hex);
 """
 
 
@@ -246,6 +255,33 @@ class Store:
         # Filter revoked
         revoked_ids = self._revoked_ids_at(matched, at)
         return [s for s in matched if s.id not in revoked_ids]
+
+    # ------------------------------------------------------------------------
+    # FCM token registry
+    # ------------------------------------------------------------------------
+
+    def register_fcm_token(self, author_hex: str, fcm_token: str, platform: str = "android") -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO fcm_tokens (author_hex, fcm_token, platform, registered_at)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(author_hex, fcm_token) DO UPDATE
+                     SET registered_at = excluded.registered_at,
+                         platform = excluded.platform""",
+                (author_hex, fcm_token, platform, _iso(datetime.now(timezone.utc))),
+            )
+
+    def get_fcm_tokens_for(self, author_hex: str) -> list[str]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT fcm_token FROM fcm_tokens WHERE author_hex = ?",
+                (author_hex,),
+            ).fetchall()
+        return [r["fcm_token"] for r in rows]
+
+    def delete_fcm_token(self, fcm_token: str) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM fcm_tokens WHERE fcm_token = ?", (fcm_token,))
 
     def query_in_range(
         self,
