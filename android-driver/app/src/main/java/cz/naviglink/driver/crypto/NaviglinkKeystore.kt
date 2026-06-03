@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import cash.z.ecc.android.bip39.Mnemonics
+import cash.z.ecc.android.bip39.toSeed
 import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.crypto.signers.Ed25519Signer
@@ -61,6 +63,47 @@ class NaviglinkKeystore(context: Context) {
         cachedPublicKeyHex = null
     }
 
+    /**
+     * Vrací BIP39 mnemonic (12 slov), pokud byl klíč vygenerován v této verzi.
+     * Klíče vygenerované ve starší verzi vrátí null — uživatel musí vytvořit
+     * novou identitu, aby získal mnemonic.
+     */
+    fun getMnemonicOrNull(): String? = prefs.getString(KEY_MNEMONIC, null)
+
+    /**
+     * Obnoví identitu z BIP39 frázové zálohy (12 slov, anglický slovník).
+     *
+     * Algoritmus identický s admin webem (@scure/bip39):
+     *   1) Validate mnemonic (throws při neplatné)
+     *   2) BIP39 PBKDF2-HMAC-SHA512 → 64-byte seed
+     *   3) Vezmi prvních 32 bajtů jako Ed25519 private key
+     *
+     * Po volání nahradí stávající klíč. Předchozí klíč ztratí dohledatelnost.
+     *
+     * @throws Mnemonics.InvalidWordException pokud slovo není v BIP39 slovníku
+     * @throws Mnemonics.WordCountException pokud počet slov není 12/15/18/21/24
+     * @throws Mnemonics.ChecksumException pokud kontrolní suma fráze nesedí
+     */
+    fun restoreFromMnemonic(words: String) {
+        val cleaned = words.trim().lowercase().split(Regex("\\s+")).joinToString(" ")
+        val code = Mnemonics.MnemonicCode(cleaned.toCharArray())
+        code.validate()  // throws checked exception při neplatné frázi
+
+        val seed = code.toSeed()  // 64-byte BIP39 seed
+        val privBytes = seed.copyOfRange(0, 32)
+        val priv = Ed25519PrivateKeyParameters(privBytes, 0)
+        val pub = priv.generatePublicKey()
+
+        prefs.edit()
+            .putString(KEY_PRIVATE, privBytes.toHex())
+            .putString(KEY_PUBLIC, pub.encoded.toHex())
+            .putString(KEY_MNEMONIC, cleaned)
+            .apply()
+
+        cachedPrivateKey = priv
+        cachedPublicKeyHex = pub.encoded.toHex()
+    }
+
     private fun getPrivateKey(): Ed25519PrivateKeyParameters {
         cachedPrivateKey?.let { return it }
         ensureKeysExist()
@@ -74,23 +117,27 @@ class NaviglinkKeystore(context: Context) {
 
     private fun ensureKeysExist() {
         if (prefs.contains(KEY_PUBLIC) && prefs.contains(KEY_PRIVATE)) return
-        // Generate new Ed25519 keypair
-        val random = SecureRandom()
-        val priv = Ed25519PrivateKeyParameters(random)
+        // Nová identita — vždy přes BIP39, aby měla mnemonic backup
+        val code = Mnemonics.MnemonicCode(Mnemonics.WordCount.COUNT_12)
+        val mnemonic = String(code.chars)
+        val seed = code.toSeed()
+        val privBytes = seed.copyOfRange(0, 32)
+        val priv = Ed25519PrivateKeyParameters(privBytes, 0)
         val pub = priv.generatePublicKey()
-        val privBytes = priv.encoded
-        val pubBytes = pub.encoded
+
         prefs.edit()
             .putString(KEY_PRIVATE, privBytes.toHex())
-            .putString(KEY_PUBLIC, pubBytes.toHex())
+            .putString(KEY_PUBLIC, pub.encoded.toHex())
+            .putString(KEY_MNEMONIC, mnemonic)
             .apply()
-        cachedPublicKeyHex = pubBytes.toHex()
+        cachedPublicKeyHex = pub.encoded.toHex()
     }
 
     companion object {
         private const val PREFS_FILE = "naviglink_keys"
         private const val KEY_PRIVATE = "ed25519_private_hex"
         private const val KEY_PUBLIC = "ed25519_public_hex"
+        private const val KEY_MNEMONIC = "bip39_mnemonic"
     }
 }
 

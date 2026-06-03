@@ -255,6 +255,40 @@
     border-color: var(--text-muted);
     cursor: not-allowed;
   }
+  .mnemonic-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin: 14px 0;
+  }
+  .mnemonic-word {
+    background: rgba(30,96,145,.06);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 10px;
+    font-family: var(--font-mono);
+    font-size: 14px;
+    display: flex;
+    align-items: baseline;
+  }
+  .mnemonic-word .num {
+    color: var(--text-muted);
+    font-size: 11px;
+    margin-right: 6px;
+    min-width: 18px;
+  }
+  .mnemonic-word .w {
+    font-weight: 500;
+  }
+  .warning-banner {
+    background: rgba(196,123,24,.08);
+    border-left: 3px solid var(--warning, #c47b18);
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    color: var(--text);
+    margin-bottom: 14px;
+  }
   .help {
     background: rgba(30,96,145,.04);
     border-radius: var(--radius);
@@ -331,15 +365,66 @@
       <h2>Identita</h2>
       <div style="font-size: 12px; color: var(--text-muted);">
         Klíče jsou uloženy v <code>localStorage</code> jen ve vašem prohlížeči.
-        Pro reset (nová identita) klikněte níže.
+      </div>
+      <div id="backupStatus" class="status" style="margin-top: 10px; font-size: 12px;">
+        Načítám…
       </div>
       <div class="button-row" style="margin-top: 8px;">
+        <button id="btnShowBackup">Zálohovat klíč (12 slov)</button>
+      </div>
+      <div class="button-row" style="margin-top: 6px;">
+        <button id="btnRestore">Obnovit z 12 slov</button>
+      </div>
+      <div class="button-row" style="margin-top: 14px;">
         <button id="btnResetKeys" class="danger">Smazat klíče a vytvořit nové</button>
       </div>
     </section>
 
   </aside>
 </main>
+
+<div id="backupModal" class="modal-backdrop">
+  <div class="modal">
+    <h3>Zálohovací fráze (12 slov)</h3>
+    <div class="warning-banner">
+      <strong>Napiš si těchto 12 slov</strong> na papír nebo do password manageru.
+      Kdokoliv s touto frází získá tvou identitu — neukládej v cloudu bez šifrování,
+      neposílej je e-mailem.
+    </div>
+    <div id="mnemonicWords" class="mnemonic-grid"></div>
+    <div class="status" style="font-size: 12px;">
+      Stejnou frázi můžeš použít k obnovení identity na jiném zařízení (např. v telefonu)
+      přes <em>Obnovit z 12 slov</em>.
+    </div>
+    <div class="modal-actions">
+      <button id="btnCopyMnemonic">Kopírovat</button>
+      <button id="btnDownloadMnemonic">Stáhnout .txt</button>
+      <button id="btnBackupDone" class="primary">Mám zapsáno, zavřít</button>
+    </div>
+  </div>
+</div>
+
+<div id="restoreModal" class="modal-backdrop">
+  <div class="modal">
+    <h3>Obnovit ze záložní fráze</h3>
+    <div class="warning-banner">
+      Tímto <strong>nahradíš aktuální klíč</strong>. Vyhlášení podepsaná aktuálním klíčem
+      zůstanou v backendu, ale nebudeš je už moct měnit ani rušit. Pokud chceš
+      jen ověřit, že máš správnou frázi, použij <em>Zálohovat klíč</em> a porovnej slova.
+    </div>
+    <div class="form-group">
+      <label for="restoreInput">12 slov (oddělená mezerou)</label>
+      <textarea id="restoreInput" rows="3"
+                placeholder="word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12"
+                spellcheck="false"
+                style="font-family: var(--font-mono); font-size: 14px;"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button id="btnRestoreCancel">Zavřít</button>
+      <button id="btnRestoreConfirm" class="danger-primary">Obnovit identitu</button>
+    </div>
+  </div>
+</div>
 
 <div id="revokeModal" class="modal-backdrop">
   <div class="modal">
@@ -381,6 +466,8 @@
 
   import * as ed from 'https://esm.sh/@noble/ed25519@2.1.0';
   import { sha512 } from 'https://esm.sh/@noble/hashes@1.4.0/sha512';
+  import { generateMnemonic, mnemonicToSeed, validateMnemonic } from 'https://esm.sh/@scure/bip39@1.4.0';
+  import { wordlist as bip39English } from 'https://esm.sh/@scure/bip39@1.4.0/wordlists/english';
   // @noble/ed25519 v2 očekává sha512 callback (browser nemá sync SHA-512)
   ed.etc.sha512Sync = (...m) => sha512(ed.etc.concatBytes(...m));
 
@@ -394,22 +481,66 @@
 
   const KEY_STORAGE = 'naviglink_magistrat_key_v1';
 
-  function loadOrGenerateKey() {
+  /**
+   * Odvodí Ed25519 keypair z BIP39 mnemonic.
+   *
+   * Postup:
+   *   1) Validate mnemonic against BIP39 English wordlist
+   *   2) PBKDF2-HMAC-SHA512 (per BIP39 spec) → 64-byte seed
+   *   3) Vezmi prvních 32 bajtů jako Ed25519 private key
+   *   4) Spočítej veřejný klíč
+   *
+   * Identický postup musí být v driver app (Kotlin), aby stejná fráze dala
+   * stejný keypair na obou platformách.
+   */
+  async function mnemonicToKeypair(mnemonic) {
+    const trimmed = mnemonic.trim().toLowerCase().split(/\s+/).join(' ');
+    if (!validateMnemonic(trimmed, bip39English)) {
+      throw new Error('Fráze není validní BIP39 (12 slov z anglického slovníku).');
+    }
+    const seed = await mnemonicToSeed(trimmed, '');
+    const privBytes = seed.slice(0, 32);
+    const pubBytes = await ed.getPublicKey(privBytes);
+    return {
+      privHex: bytesToHex(privBytes),
+      pubHex: bytesToHex(pubBytes),
+      mnemonic: trimmed,
+    };
+  }
+
+  async function loadOrGenerateKey() {
     let stored = localStorage.getItem(KEY_STORAGE);
     if (stored) {
       try {
         const obj = JSON.parse(stored);
-        return { privHex: obj.priv, pubHex: obj.pub };
+        return {
+          privHex: obj.priv,
+          pubHex: obj.pub,
+          mnemonic: obj.mnemonic || null,  // null pro legacy keys bez BIP39 backup
+        };
       } catch (e) {
         console.warn('Stored key corrupted, regenerating', e);
       }
     }
-    const priv = ed.utils.randomPrivateKey();
-    const pub = ed.getPublicKey(priv);
-    const privHex = bytesToHex(priv);
-    const pubHex = bytesToHex(pub);
-    localStorage.setItem(KEY_STORAGE, JSON.stringify({ priv: privHex, pub: pubHex }));
-    return { privHex, pubHex };
+    // Nová identita — vždy s BIP39 zálohou
+    const mnemonic = generateMnemonic(bip39English, 128);  // 128 bits → 12 slov
+    const { privHex, pubHex } = await mnemonicToKeypair(mnemonic);
+    localStorage.setItem(KEY_STORAGE, JSON.stringify({
+      priv: privHex,
+      pub: pubHex,
+      mnemonic: mnemonic,
+    }));
+    return { privHex, pubHex, mnemonic, freshlyCreated: true };
+  }
+
+  async function restoreFromMnemonic(mnemonic) {
+    const { privHex, pubHex, mnemonic: clean } = await mnemonicToKeypair(mnemonic);
+    localStorage.setItem(KEY_STORAGE, JSON.stringify({
+      priv: privHex,
+      pub: pubHex,
+      mnemonic: clean,
+    }));
+    location.reload();  // nejjednodušší způsob re-init UI s novým klíčem
   }
 
   function bytesToHex(bytes) {
@@ -714,16 +845,48 @@
   // UI handlers
   // ===========================================================================
 
-  const { pubHex, privHex } = loadOrGenerateKey();
-  document.getElementById('identityLabel').textContent =
-    'did:key:' + pubHex.slice(0, 16) + '…';
+  // Mutable v module scope — naplní async init bloku níže.
+  let pubHex, privHex, currentMnemonic;
 
-  apiHealth().then(h => {
-    if (!h) {
-      document.getElementById('connDot').style.background = 'var(--danger)';
-      document.getElementById('identityLabel').textContent += ' (server offline)';
+  (async () => {
+    const k = await loadOrGenerateKey();
+    pubHex = k.pubHex;
+    privHex = k.privHex;
+    currentMnemonic = k.mnemonic;
+
+    document.getElementById('identityLabel').textContent =
+      'did:key:' + pubHex.slice(0, 16) + '…';
+
+    updateBackupStatusBanner(!!currentMnemonic);
+
+    if (k.freshlyCreated && currentMnemonic) {
+      // První spuštění — automaticky ukáže zálohovací modal,
+      // aby uživatel zálohu provedl hned, ne až za týden
+      openBackupModal(currentMnemonic);
     }
-  });
+
+    apiHealth().then(h => {
+      if (!h) {
+        document.getElementById('connDot').style.background = 'var(--danger)';
+        document.getElementById('identityLabel').textContent += ' (server offline)';
+      }
+    });
+
+    refreshSubjectsList();
+  })();
+
+  function updateBackupStatusBanner(hasMnemonic) {
+    const el = document.getElementById('backupStatus');
+    if (hasMnemonic) {
+      el.style.background = 'rgba(45,128,80,.08)';
+      el.style.borderLeftColor = 'var(--success)';
+      el.innerHTML = '✓ Klíč má zálohu (12 slov)';
+    } else {
+      el.style.background = 'rgba(176,48,48,.08)';
+      el.style.borderLeftColor = 'var(--danger)';
+      el.innerHTML = '⚠ Tento klíč nemá BIP39 zálohu (vytvořen ve starší verzi). Když ztratíš prohlížeč, ztratíš identitu. Doporučuju <em>Smazat klíče</em> → nová identita dostane BIP39 zálohu.';
+    }
+  }
 
   document.getElementById('btnClear').addEventListener('click', clearDrawing);
 
@@ -732,6 +895,103 @@
     localStorage.removeItem(KEY_STORAGE);
     localStorage.removeItem('naviglink_my_subjects'); // legacy klíč z v1
     location.reload();
+  });
+
+  // ===========================================================================
+  // Backup / restore modals
+  // ===========================================================================
+
+  function openBackupModal(mnemonic) {
+    if (!mnemonic) {
+      alert('Tento klíč nemá BIP39 zálohu. Vytvoř novou identitu (Smazat klíče) a dostaneš zálohovací frázi.');
+      return;
+    }
+    const grid = document.getElementById('mnemonicWords');
+    const words = mnemonic.split(/\s+/);
+    grid.innerHTML = '';
+    for (let i = 0; i < words.length; i++) {
+      const div = document.createElement('div');
+      div.className = 'mnemonic-word';
+      div.innerHTML = `<span class="num">${i + 1}.</span><span class="w">${escapeHtml(words[i])}</span>`;
+      grid.appendChild(div);
+    }
+    document.getElementById('backupModal').classList.add('open');
+  }
+
+  function closeBackupModal() {
+    document.getElementById('backupModal').classList.remove('open');
+  }
+
+  document.getElementById('btnShowBackup').addEventListener('click', () => {
+    openBackupModal(currentMnemonic);
+  });
+  document.getElementById('btnBackupDone').addEventListener('click', closeBackupModal);
+  document.getElementById('backupModal').addEventListener('click', (e) => {
+    if (e.target.id === 'backupModal') closeBackupModal();
+  });
+
+  document.getElementById('btnCopyMnemonic').addEventListener('click', async () => {
+    if (!currentMnemonic) return;
+    try {
+      await navigator.clipboard.writeText(currentMnemonic);
+      const b = document.getElementById('btnCopyMnemonic');
+      const orig = b.textContent;
+      b.textContent = '✓ Zkopírováno';
+      setTimeout(() => { b.textContent = orig; }, 1500);
+    } catch (e) {
+      alert('Kopírování selhalo: ' + e.message);
+    }
+  });
+
+  document.getElementById('btnDownloadMnemonic').addEventListener('click', () => {
+    if (!currentMnemonic) return;
+    const content = `Naviglink — záložní fráze magistrátní identity\nVygenerováno: ${new Date().toISOString()}\nPublic key (did:key:): ${pubHex}\n\n${currentMnemonic}\n\nULOŽ BEZPEČNĚ. Kdokoliv s touto frází získá tvou identitu.`;
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `naviglink-backup-${pubHex.slice(0, 8)}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+
+  // Restore modal
+  document.getElementById('btnRestore').addEventListener('click', () => {
+    document.getElementById('restoreInput').value = '';
+    document.getElementById('restoreModal').classList.add('open');
+    setTimeout(() => document.getElementById('restoreInput').focus(), 50);
+  });
+  document.getElementById('btnRestoreCancel').addEventListener('click', () => {
+    document.getElementById('restoreModal').classList.remove('open');
+  });
+  document.getElementById('restoreModal').addEventListener('click', (e) => {
+    if (e.target.id === 'restoreModal') document.getElementById('restoreModal').classList.remove('open');
+  });
+  document.getElementById('btnRestoreConfirm').addEventListener('click', async () => {
+    const input = document.getElementById('restoreInput').value.trim();
+    if (!input) {
+      alert('Vlož 12 slov.');
+      return;
+    }
+    const btn = document.getElementById('btnRestoreConfirm');
+    btn.disabled = true;
+    btn.textContent = 'Ověřuji…';
+    try {
+      await restoreFromMnemonic(input);
+    } catch (e) {
+      alert(e.message);
+      btn.disabled = false;
+      btn.textContent = 'Obnovit identitu';
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (document.getElementById('backupModal').classList.contains('open')) closeBackupModal();
+    if (document.getElementById('restoreModal').classList.contains('open'))
+      document.getElementById('restoreModal').classList.remove('open');
   });
 
   document.getElementById('btnRefresh').addEventListener('click', refreshSubjectsList);
@@ -945,8 +1205,7 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
   }
 
-  // Initial load
-  refreshSubjectsList();
+  // Initial load probíhá uvnitř async IIFE výše (po načtení klíče).
 
 </script>
 </body>

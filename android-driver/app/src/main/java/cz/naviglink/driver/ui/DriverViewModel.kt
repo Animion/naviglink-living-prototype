@@ -53,6 +53,19 @@ class DriverViewModel(private val app: NaviglinkApp) : ViewModel() {
     /** Vrací hex public klíče identitu pro zobrazení v UI ("did:key:abc..."). */
     val publicKeyHex: String get() = app.keystore.publicKeyHex
 
+    /** Vrací BIP39 mnemonic (12 slov), pokud existuje. Klíče ze starší verze vrátí null. */
+    val mnemonic: String? get() = app.keystore.getMnemonicOrNull()
+
+    /**
+     * Obnoví klíč z 12-slovní BIP39 fráze. Po úspěchu UI musí být refreshed
+     * (pubHex se změnil) — volající má zavolat resetToIdle nebo restart aktivity.
+     *
+     * @throws Exception při neplatné frázi (z BIP39 validate)
+     */
+    fun restoreFromMnemonic(mnemonic: String) {
+        app.keystore.restoreFromMnemonic(mnemonic)
+    }
+
     fun onResume() {
         if (!app.location.hasPermission()) {
             _state.value = DriverUiState.NeedsLocationPermission

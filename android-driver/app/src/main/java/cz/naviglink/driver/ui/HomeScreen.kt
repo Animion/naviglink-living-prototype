@@ -25,7 +25,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,6 +51,32 @@ fun HomeScreen(
     val pubHexShort = remember(viewModel) {
         val h = viewModel.publicKeyHex
         "did:key:" + h.take(16) + "…"
+    }
+
+    var showBackup by remember { mutableStateOf(false) }
+    var showRestore by remember { mutableStateOf(false) }
+
+    if (showBackup) {
+        BackupMnemonicDialog(
+            mnemonic = viewModel.mnemonic,
+            publicKeyHex = viewModel.publicKeyHex,
+            onDismiss = { showBackup = false },
+        )
+    }
+    if (showRestore) {
+        RestoreMnemonicDialog(
+            onConfirm = { mnemonic ->
+                viewModel.restoreFromMnemonic(mnemonic)
+                showRestore = false
+                // Refresh activity so identity, polling worker key, ViewModel
+                // and UI re-read the new pubHex from keystore.
+                (viewModel as? DriverViewModel)?.let { /* no-op, recompose driven by recreation */ }
+                // Quickest UX: trigger Idle so the user sees new state. Restart
+                // of the activity by user (or system process) will pick up new key.
+                viewModel.resetToIdle()
+            },
+            onDismiss = { showRestore = false },
+        )
     }
 
     val bgColor = when (state) {
@@ -81,6 +109,8 @@ fun HomeScreen(
                 onReset = viewModel::resetToIdle,
                 onSendParkSnapshot = { viewModel.sendParkSnapshot() },
                 onRunAlertsWorker = viewModel::runAlertsCheckNow,
+                onShowBackup = { showBackup = true },
+                onShowRestore = { showRestore = true },
                 onRequestLocation = onRequestLocationPermission,
                 onRequestNotifications = onRequestNotificationPermission,
             )
@@ -117,11 +147,13 @@ private fun StateContent(
     onReset: () -> Unit,
     onSendParkSnapshot: () -> Unit,
     onRunAlertsWorker: () -> Unit,
+    onShowBackup: () -> Unit,
+    onShowRestore: () -> Unit,
     onRequestLocation: () -> Unit,
     onRequestNotifications: () -> Unit,
 ) {
     when (state) {
-        is DriverUiState.Idle -> IdlePane(onCheckNow, onSendParkSnapshot)
+        is DriverUiState.Idle -> IdlePane(onCheckNow, onSendParkSnapshot, onShowBackup, onShowRestore)
         is DriverUiState.NeedsLocationPermission ->
             NeedsPermissionPane("Pro zjištění upozornění je potřeba povolit polohu.", onRequestLocation)
         is DriverUiState.CheckingLocation -> Working("Zjišťuji polohu…")
@@ -137,7 +169,12 @@ private fun StateContent(
 }
 
 @Composable
-private fun IdlePane(onCheckNow: () -> Unit, onSendParkSnapshot: () -> Unit) {
+private fun IdlePane(
+    onCheckNow: () -> Unit,
+    onSendParkSnapshot: () -> Unit,
+    onShowBackup: () -> Unit,
+    onShowRestore: () -> Unit,
+) {
     Text(
         text = "Připraveno.",
         fontSize = 24.sp,
@@ -167,6 +204,22 @@ private fun IdlePane(onCheckNow: () -> Unit, onSendParkSnapshot: () -> Unit) {
         textAlign = TextAlign.Center,
         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
     )
+
+    Spacer(Modifier.height(24.dp))
+    // Klíč backup/restore — vždy přístupné. Doporučeno hned po prvním spuštění.
+    OutlinedButton(
+        onClick = onShowBackup,
+        modifier = Modifier.fillMaxWidth().height(48.dp),
+    ) {
+        Text("Zálohovat klíč (12 slov)", fontSize = 14.sp)
+    }
+    Spacer(Modifier.height(6.dp))
+    androidx.compose.material3.TextButton(
+        onClick = onShowRestore,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text("Obnovit z 12 slov", fontSize = 13.sp)
+    }
 }
 
 @Composable

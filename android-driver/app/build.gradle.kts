@@ -90,6 +90,11 @@ dependencies {
     // pro pilot držíme jednotný stack (software Ed25519, klíče v EncryptedSharedPreferences).
     implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
 
+    // === BIP39 mnemonic pro backup klíčů ===
+    // 12-slovní fráze → deterministické odvození Ed25519 klíče. Identický postup
+    // jako v admin webu (@scure/bip39), aby stejná fráze fungovala napříč platformami.
+    implementation("cash.z.ecc.android:kotlin-bip39:1.0.8")
+
     // === EncryptedSharedPreferences ===
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
