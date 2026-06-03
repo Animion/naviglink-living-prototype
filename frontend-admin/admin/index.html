@@ -443,6 +443,24 @@
     </section>
 
     <section>
+      <h2>Import z externích zdrojů</h2>
+      <div class="help">
+        <strong>data.brno.cz Waze Alerts.</strong> Naviglink importer pullne aktuální
+        dopravní omezení z Brno open data, podepíše vlastním klíčem (proxy attestation)
+        a vystaví jako subjekty typu <code>traffic_restriction</code>. Driver app
+        i veřejný dashboard je zobrazí beze změny kódu — důkaz, že vrstva 0 je
+        opravdu doménově neutrální.
+      </div>
+      <div id="importerStatus" class="status" style="font-size: 12px;">
+        Načítám stav importeru…
+      </div>
+      <div class="button-row">
+        <button id="btnImportBrnoWaze" class="primary">Načíst aktuální Waze alerty</button>
+      </div>
+      <div id="importResult" style="margin-top: 8px; font-size: 12px; display: none;"></div>
+    </section>
+
+    <section>
       <h2>Mé vyhlášené subjekty</h2>
       <div id="subjectsList">
         <div style="color: var(--text-muted); font-size: 13px;">Zatím žádné.</div>
@@ -964,6 +982,7 @@
     });
 
     refreshSubjectsList();
+    refreshImporterStatus();
   })();
 
   function updateBackupStatusBanner(hasMnemonic) {
@@ -1293,6 +1312,71 @@
     } finally {
       btn.disabled = false;
       btn.textContent = 'Zrušit vyhlášení';
+    }
+  });
+
+  // ===========================================================================
+  // Import z externích zdrojů — data.brno.cz Waze Alerts
+  // ===========================================================================
+
+  async function refreshImporterStatus() {
+    const el = document.getElementById('importerStatus');
+    try {
+      const data = await apiGetNoCache('/admin/import/brno-waze/status');
+      el.style.background = 'rgba(45,128,80,.06)';
+      el.style.borderLeftColor = 'var(--success)';
+      el.innerHTML = `
+        Importer: <code>${escapeHtml(data.importer_did)}</code><br>
+        Aktivních importovaných: <strong>${data.total_imported_subjects}</strong>
+      `;
+    } catch (e) {
+      el.style.background = 'rgba(176,48,48,.06)';
+      el.style.borderLeftColor = 'var(--danger)';
+      el.innerHTML = `Chyba: ${escapeHtml(e.message)}`;
+    }
+  }
+
+  document.getElementById('btnImportBrnoWaze').addEventListener('click', async () => {
+    const btn = document.getElementById('btnImportBrnoWaze');
+    const result = document.getElementById('importResult');
+    btn.disabled = true;
+    btn.textContent = 'Stahuju z data.brno.cz…';
+    result.style.display = 'none';
+
+    try {
+      const r = await fetch(`${API_HOST}/admin/import/brno-waze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      result.style.display = 'block';
+      result.style.background = 'rgba(45,128,80,.08)';
+      result.style.borderLeft = '3px solid var(--success)';
+      result.style.padding = '8px 10px';
+      result.style.borderRadius = 'var(--radius)';
+      let html = `
+        <strong>✓ Hotovo.</strong><br>
+        Fetched z feedu: ${data.fetched}<br>
+        Nově importováno: <strong>${data.imported}</strong><br>
+        Přeskočeno (už máme): ${data.skipped}
+      `;
+      if (data.errors && data.errors.length) {
+        html += `<br>Chyb: ${data.errors.length} (prvních pár: ${data.errors.slice(0, 3).map(escapeHtml).join('; ')})`;
+      }
+      result.innerHTML = html;
+      await refreshImporterStatus();
+      await refreshSubjectsList();
+    } catch (e) {
+      result.style.display = 'block';
+      result.style.background = 'rgba(176,48,48,.08)';
+      result.style.borderLeft = '3px solid var(--danger)';
+      result.style.padding = '8px 10px';
+      result.style.borderRadius = 'var(--radius)';
+      result.textContent = `Chyba: ${e.message}`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Načíst aktuální Waze alerty';
     }
   });
 

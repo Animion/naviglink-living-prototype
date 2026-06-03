@@ -63,6 +63,12 @@ CREATE TABLE IF NOT EXISTS reference_index (
 CREATE INDEX IF NOT EXISTS idx_ref_target ON reference_index (target_id);
 CREATE INDEX IF NOT EXISTS idx_ref_role_target ON reference_index (role, target_id);
 
+CREATE TABLE IF NOT EXISTS app_state (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS fcm_tokens (
     author_hex    TEXT NOT NULL,
     fcm_token     TEXT NOT NULL,
@@ -259,6 +265,27 @@ class Store:
     # ------------------------------------------------------------------------
     # FCM token registry
     # ------------------------------------------------------------------------
+
+    # ------------------------------------------------------------------------
+    # App state (key/value)
+    # ------------------------------------------------------------------------
+
+    def app_state_get(self, key: str) -> Optional[str]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT value FROM app_state WHERE key = ?", (key,)
+            ).fetchone()
+            return row["value"] if row else None
+
+    def app_state_set(self, key: str, value: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO app_state (key, value, updated_at)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(key) DO UPDATE
+                     SET value = excluded.value, updated_at = excluded.updated_at""",
+                (key, value, _iso(datetime.now(timezone.utc))),
+            )
 
     def register_fcm_token(self, author_hex: str, fcm_token: str, platform: str = "android") -> None:
         with self._connect() as conn:

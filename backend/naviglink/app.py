@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 from .model import SignedSubject
 from .identifier import compute_id, verify_id
 from . import events
+from . import importer_brno_waze
 
 
 # ---------------------------------------------------------------------------
@@ -324,6 +325,38 @@ def alerts_for_driver(
         "checked_at": now.isoformat(),
         "alerts": [s.model_dump(mode="json") for s in matches],
         "count": len(matches),
+    }
+
+
+@app.post("/admin/import/brno-waze")
+async def admin_import_brno_waze() -> dict:
+    """Manuálně spustit import Waze Alerts z data.brno.cz.
+
+    Pro pilot (B.1) bez auth — interní endpoint volaný z admin webu tlačítkem.
+    Pro produkční nasazení by mělo být chráněno (signed request, API klíč,
+    nebo IP whitelist).
+
+    Vrátí summary: počty fetched/imported/skipped + errors.
+    """
+    result = await importer_brno_waze.import_brno_waze(store)
+    import logging
+    logging.getLogger(__name__).info("Brno Waze import: %s", result)
+    return result
+
+
+@app.get("/admin/import/brno-waze/status")
+def admin_import_brno_waze_status() -> dict:
+    """Status importeru: pub key + počet aktivních importovaných subjektů."""
+    keyring = importer_brno_waze.get_keyring(store=store)
+    importer_pub_hex = keyring.pub_hex
+
+    # Počet aktivních subjektů od importer klíče
+    subjects = store.list(author=importer_pub_hex, kind="subject", limit=500)
+    return {
+        "importer_pub_hex": importer_pub_hex,
+        "importer_did": f"did:key:{importer_pub_hex[:16]}…",
+        "total_imported_subjects": len(subjects),
+        "feed_url": importer_brno_waze.SOURCE_URL,
     }
 
 

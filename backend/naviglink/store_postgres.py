@@ -62,6 +62,12 @@ CREATE TABLE IF NOT EXISTS reference_index (
 CREATE INDEX IF NOT EXISTS idx_ref_target ON reference_index (target_id);
 CREATE INDEX IF NOT EXISTS idx_ref_role_target ON reference_index (role, target_id);
 
+CREATE TABLE IF NOT EXISTS app_state (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS fcm_tokens (
     author_hex   TEXT NOT NULL,
     fcm_token    TEXT NOT NULL,
@@ -265,6 +271,28 @@ class PostgresStore:
     # ------------------------------------------------------------------------
     # FCM token registry (push notifikace)
     # ------------------------------------------------------------------------
+
+    # ------------------------------------------------------------------------
+    # App state (key/value) — pro persistence importer klíčů, last-sync timestamps
+    # ------------------------------------------------------------------------
+
+    def app_state_get(self, key: str) -> Optional[str]:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT value FROM app_state WHERE key = %s", (key,))
+                row = cur.fetchone()
+                return row[0] if row else None
+
+    def app_state_set(self, key: str, value: str) -> None:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO app_state (key, value, updated_at)
+                       VALUES (%s, %s, NOW())
+                       ON CONFLICT (key) DO UPDATE
+                         SET value = EXCLUDED.value, updated_at = NOW()""",
+                    (key, value),
+                )
 
     def register_fcm_token(self, author_hex: str, fcm_token: str, platform: str = "android") -> None:
         """Uloží FCM token pro autora. Idempotentní (UPSERT).
