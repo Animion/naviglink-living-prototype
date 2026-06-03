@@ -299,6 +299,69 @@
   }
   .help strong { color: var(--text); }
   .draw-active #map { cursor: crosshair; }
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 18px 14px;
+    text-align: center;
+    color: var(--text-muted);
+    background: rgba(30,96,145,.03);
+    transition: all .12s ease;
+  }
+  .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(30,96,145,.08);
+    color: var(--accent);
+  }
+  .drop-zone button {
+    margin-top: 8px;
+    font-size: 13px;
+    padding: 6px 14px;
+  }
+  .csv-preview-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+    margin-top: 4px;
+  }
+  .csv-preview-table th,
+  .csv-preview-table td {
+    border: 1px solid var(--border);
+    padding: 4px 6px;
+    text-align: left;
+    vertical-align: top;
+    word-break: break-word;
+  }
+  .csv-preview-table th {
+    background: rgba(30,96,145,.06);
+    font-weight: 600;
+  }
+  .csv-preview-table tr.invalid {
+    background: rgba(176,48,48,.06);
+  }
+  .csv-preview-table tr.invalid td {
+    color: var(--danger);
+  }
+  .csv-row-status {
+    font-family: var(--font-mono);
+    font-size: 10px;
+  }
+  .csv-row-status.ok { color: var(--success); }
+  .csv-row-status.error { color: var(--danger); }
+  .csv-row-status.pending { color: var(--text-muted); }
+  .csv-progress-bar {
+    background: var(--border);
+    border-radius: 3px;
+    height: 6px;
+    overflow: hidden;
+    margin-top: 4px;
+  }
+  .csv-progress-bar > span {
+    display: block;
+    background: var(--accent);
+    height: 100%;
+    transition: width .15s ease;
+  }
 </style>
 </head>
 <body>
@@ -356,6 +419,26 @@
       <div class="button-row">
         <button id="btnClear">Zrušit polygon</button>
         <button id="btnPublish" class="primary" disabled>Vyhlásit</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Hromadné vyhlášení (CSV)</h2>
+      <div class="help">
+        Vlož CSV se sloupci <code>ulice</code>, <code>valid_from</code>, <code>valid_to</code>,
+        <code>geometry_geojson</code>. Časy v ISO 8601 (UTC, např. <code>2026-06-09T06:00:00Z</code>).
+        Polygon jako GeoJSON: <code>{"type":"Polygon","coordinates":[[[lon,lat],…]]}</code>.
+      </div>
+      <div id="csvDropZone" class="drop-zone">
+        <div>Přetáhni CSV sem nebo</div>
+        <input type="file" id="csvInput" accept=".csv,text/csv" style="display:none;">
+        <button id="btnCsvBrowse" type="button">Vyber soubor</button>
+      </div>
+      <div id="csvPreview" style="display:none; margin-top:10px;"></div>
+      <div id="csvProgress" style="display:none; margin-top:10px;"></div>
+      <div class="button-row" style="margin-top:8px;">
+        <button id="btnCsvSample">Stáhnout vzor CSV</button>
+        <button id="btnCsvPublish" class="primary" disabled>Vyhlásit všechny</button>
       </div>
     </section>
 
@@ -1211,6 +1294,214 @@
       btn.disabled = false;
       btn.textContent = 'Zrušit vyhlášení';
     }
+  });
+
+  // ===========================================================================
+  // CSV import — hromadné vyhlášení
+  // ===========================================================================
+
+  let csvParsedRows = [];  // array of {ulice, validFrom, validTo, polygon, error?, status?}
+
+  // CSV parser — jednoduchý, podporuje quoted fields s escapovanými uvozovkami
+  function parseCsv(text) {
+    const rows = [];
+    let row = [];
+    let cell = '';
+    let inQuotes = false;
+    let i = 0;
+    while (i < text.length) {
+      const ch = text[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (text[i + 1] === '"') { cell += '"'; i += 2; continue; }
+          inQuotes = false; i++;
+        } else { cell += ch; i++; }
+      } else {
+        if (ch === '"') { inQuotes = true; i++; }
+        else if (ch === ',') { row.push(cell); cell = ''; i++; }
+        else if (ch === '\r') { i++; }
+        else if (ch === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; i++; }
+        else { cell += ch; i++; }
+      }
+    }
+    if (cell.length > 0 || row.length > 0) { row.push(cell); rows.push(row); }
+    return rows.filter(r => r.length > 1 || (r.length === 1 && r[0].trim()));
+  }
+
+  function validateRow(headers, cells) {
+    const obj = {};
+    headers.forEach((h, idx) => { obj[h.trim()] = (cells[idx] || '').trim(); });
+
+    const ulice = obj.ulice;
+    if (!ulice) return { error: 'Chybí ulice' };
+
+    const validFrom = new Date(obj.valid_from);
+    const validTo = new Date(obj.valid_to);
+    if (isNaN(validFrom.getTime())) return { error: 'Neplatný valid_from' };
+    if (isNaN(validTo.getTime())) return { error: 'Neplatný valid_to' };
+    if (validTo <= validFrom) return { error: 'valid_to musí být po valid_from' };
+
+    let geom;
+    try {
+      geom = JSON.parse(obj.geometry_geojson);
+    } catch (e) {
+      return { error: 'Neplatný JSON v geometry_geojson' };
+    }
+    if (geom.type !== 'Polygon') return { error: 'Geometry musí být Polygon' };
+    const ring = geom.coordinates?.[0];
+    if (!Array.isArray(ring) || ring.length < 4) {
+      return { error: 'Polygon potřebuje aspoň 3 vertexy + uzavření (4 body v ringu)' };
+    }
+    for (const pt of ring) {
+      if (!Array.isArray(pt) || pt.length < 2) return { error: 'Neplatný bod v polygonu' };
+      const [lon, lat] = pt;
+      if (typeof lon !== 'number' || typeof lat !== 'number') return { error: 'Souřadnice nejsou čísla' };
+      if (lon < -180 || lon > 180 || lat < -90 || lat > 90) return { error: 'Souřadnice mimo rozsah' };
+    }
+    // Polygon pro buildAndSignSubject je list [lon,lat] párů
+    const polygon = ring.map(([lon, lat]) => [lon, lat]);
+
+    return { ulice, validFrom, validTo, polygon, status: 'pending' };
+  }
+
+  function renderCsvPreview() {
+    const div = document.getElementById('csvPreview');
+    if (csvParsedRows.length === 0) {
+      div.style.display = 'none';
+      document.getElementById('btnCsvPublish').disabled = true;
+      return;
+    }
+    div.style.display = 'block';
+    const validCount = csvParsedRows.filter(r => !r.error).length;
+    const invalidCount = csvParsedRows.length - validCount;
+    let html = `<div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">
+      Načteno ${csvParsedRows.length} řádků: <strong style="color:var(--success);">${validCount}</strong> validních${invalidCount ? `, <strong style="color:var(--danger);">${invalidCount}</strong> chybných` : ''}.
+    </div>`;
+    html += '<table class="csv-preview-table"><thead><tr><th>#</th><th>Ulice</th><th>Od</th><th>Do</th><th>Stav</th></tr></thead><tbody>';
+    csvParsedRows.forEach((r, i) => {
+      const statusCls = r.error ? 'error' : (r.status === 'sent' ? 'ok' : (r.status === 'failed' ? 'error' : 'pending'));
+      const statusText = r.error || (r.status === 'sent' ? '✓' : (r.status === 'failed' ? '✗ ' + (r.serverError || '') : '…'));
+      html += `<tr class="${r.error ? 'invalid' : ''}">
+        <td>${i + 1}</td>
+        <td>${escapeHtml(r.ulice || '—')}</td>
+        <td>${r.validFrom ? r.validFrom.toLocaleString('cs-CZ', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</td>
+        <td>${r.validTo ? r.validTo.toLocaleString('cs-CZ', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</td>
+        <td class="csv-row-status ${statusCls}">${escapeHtml(statusText)}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    div.innerHTML = html;
+    document.getElementById('btnCsvPublish').disabled = (validCount === 0);
+  }
+
+  function loadCsvFile(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target.result;
+        const rows = parseCsv(text);
+        if (rows.length < 2) {
+          alert('CSV je prázdné nebo má jen hlavičku.');
+          return;
+        }
+        const headers = rows[0].map(h => h.trim());
+        const required = ['ulice', 'valid_from', 'valid_to', 'geometry_geojson'];
+        const missing = required.filter(c => !headers.includes(c));
+        if (missing.length) {
+          alert('CSV chybí sloupce: ' + missing.join(', '));
+          return;
+        }
+        csvParsedRows = rows.slice(1).map(r => validateRow(headers, r));
+        renderCsvPreview();
+      } catch (err) {
+        alert('Chyba při čtení CSV: ' + err.message);
+      }
+    };
+    reader.readAsText(file, 'utf-8');
+  }
+
+  document.getElementById('btnCsvBrowse').addEventListener('click', () => {
+    document.getElementById('csvInput').click();
+  });
+  document.getElementById('csvInput').addEventListener('change', (e) => {
+    if (e.target.files[0]) loadCsvFile(e.target.files[0]);
+  });
+
+  const dropZone = document.getElementById('csvDropZone');
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('drag-over');
+  });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    if (e.dataTransfer.files[0]) loadCsvFile(e.dataTransfer.files[0]);
+  });
+
+  document.getElementById('btnCsvSample').addEventListener('click', () => {
+    const sample = `ulice,valid_from,valid_to,geometry_geojson
+Veveří,2026-06-09T06:00:00Z,2026-06-09T10:00:00Z,"{""type"":""Polygon"",""coordinates"":[[[16.605,49.205],[16.615,49.205],[16.615,49.210],[16.605,49.210],[16.605,49.205]]]}"
+Husova,2026-06-10T06:00:00Z,2026-06-10T10:00:00Z,"{""type"":""Polygon"",""coordinates"":[[[16.605,49.195],[16.615,49.195],[16.615,49.200],[16.605,49.200],[16.605,49.195]]]}"
+`;
+    const blob = new Blob([sample], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'naviglink-import-vzor.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+
+  document.getElementById('btnCsvPublish').addEventListener('click', async () => {
+    const btn = document.getElementById('btnCsvPublish');
+    const progDiv = document.getElementById('csvProgress');
+    const validRows = csvParsedRows.filter(r => !r.error);
+    if (validRows.length === 0) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Posílám…';
+    progDiv.style.display = 'block';
+
+    let sent = 0;
+    let failed = 0;
+    const total = validRows.length;
+    const updateProgress = () => {
+      const pct = Math.round(((sent + failed) / total) * 100);
+      progDiv.innerHTML = `
+        <div style="font-size:12px;">Hotovo ${sent + failed}/${total} (${sent} úspěch, ${failed} chyba)</div>
+        <div class="csv-progress-bar"><span style="width:${pct}%;"></span></div>
+      `;
+    };
+    updateProgress();
+
+    // Sériové (ne paralelní) — backend není rate-limited, ale chceme deterministic order pro UI feedback
+    for (const r of validRows) {
+      try {
+        const subject = await buildAndSignSubject({
+          ulice: r.ulice,
+          validFrom: r.validFrom,
+          validTo: r.validTo,
+          polygon: r.polygon,
+          pubHex, privHex,
+        });
+        await apiPostSubject(subject);
+        r.status = 'sent';
+        sent++;
+      } catch (e) {
+        r.status = 'failed';
+        r.serverError = (e.message || '').slice(0, 50);
+        failed++;
+      }
+      renderCsvPreview();
+      updateProgress();
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Vyhlásit všechny';
+    await refreshSubjectsList();
   });
 
   function escapeHtml(s) {
