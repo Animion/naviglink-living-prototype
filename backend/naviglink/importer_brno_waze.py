@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 WAZE_FEED_URL = (
     "https://gis.brno.cz/ags1/rest/services/Hosted/WazeAlerts/FeatureServer/0/query"
-    "?where=1%3D1&outFields=*&outSR=4326&f=json&resultRecordCount=2000"
+    "?where=1%3D1&outFields=*&outSR=4326&f=json&resultRecordCount=100"
 )
 
 # Heuristika valid_to (hodiny od pubMillis) — feed nezadává konec platnosti.
@@ -224,11 +224,16 @@ def feature_to_subject(feature: dict, keyring: ImporterKeyring) -> SignedSubject
 
 async def fetch_waze_features() -> list[dict]:
     """Pullne aktuální Waze alerty z data.brno.cz."""
+    import time
+    t0 = time.time()
+    print(f"[importer] fetching {WAZE_FEED_URL}", flush=True)
     async with httpx.AsyncClient(timeout=30.0) as client:
         r = await client.get(WAZE_FEED_URL)
         r.raise_for_status()
         data = r.json()
-    return data.get("features", [])
+    features = data.get("features", [])
+    print(f"[importer] fetched {len(features)} features in {time.time()-t0:.2f}s", flush=True)
+    return features
 
 
 def find_existing_subject_for_uuid(store, waze_uuid: str) -> Optional[SignedSubject]:
@@ -249,15 +254,33 @@ async def import_brno_waze(store) -> dict[str, Any]:
     Vrací summary dict pro UI/log:
       {imported: N, skipped: M, errors: list, fetched: total}
     """
+    import time
+    t_start = time.time()
+    print("[importer] === START import_brno_waze ===", flush=True)
+
+    print("[importer] step 1: get keyring", flush=True)
     keyring = get_keyring(store=store)
+    print(f"[importer] keyring ready, pub={keyring.pub_hex[:16]}…", flush=True)
+
+    print("[importer] step 2: fetch features", flush=True)
     features = await fetch_waze_features()
+
+    print(f"[importer] step 3: process {len(features)} features sequentially", flush=True)
 
     imported = 0
     skipped = 0
     errors: list[str] = []
-
     seen_uuids: set[str] = set()
-    for f in features:
+
+    for idx, f in enumerate(features):
+        if idx % 10 == 0:
+            elapsed = time.time() - t_start
+            print(
+                f"[importer]   progress {idx}/{len(features)} "
+                f"(imported={imported}, skipped={skipped}, errors={len(errors)}, "
+                f"elapsed={elapsed:.1f}s)",
+                flush=True,
+            )
         try:
             attrs = f.get("attributes", {})
             waze_uuid = str(attrs.get("uuid") or attrs.get("globalid") or "")
@@ -266,28 +289,43 @@ async def import_brno_waze(store) -> dict[str, Any]:
                 continue
             seen_uuids.add(waze_uuid)
 
+            t_find = time.time()
             existing = find_existing_subject_for_uuid(store, waze_uuid)
+            t_find = time.time() - t_find
+            if t_find > 1.0:
+                print(f"[importer]   slow find_referencing: {t_find:.2f}s for {waze_uuid}", flush=True)
+
             if existing:
-                # Idempotence — už ho máme. (Pro detekci změn payloadu by se
-                # mohlo porovnávat content; pro pilot zachováme prostou idempotenci.)
                 skipped += 1
                 continue
 
             subject = feature_to_subject(f, keyring)
+
+            t_put = time.time()
             store.put(subject)
+            t_put = time.time() - t_put
+            if t_put > 1.0:
+                print(f"[importer]   slow put: {t_put:.2f}s for {waze_uuid}", flush=True)
+
             imported += 1
         except Exception as e:  # noqa: BLE001
+            import traceback
             errors.append(f"{f.get('attributes', {}).get('uuid', '?')}: {e}")
-            logger.warning("Failed to import feature: %s", e)
+            print(f"[importer] FAIL idx={idx} err={e}", flush=True)
+            print(traceback.format_exc(), flush=True)
 
-    # TODO (B.2): při auto-cron iteraci porovnat seen_uuids s active subjects
-    # od importer_pubhex a revokovat ty, které z feedu zmizely. Pro pilot
-    # (B.1 manual) ne kritické — uživatel ručně klikne.
+    total_elapsed = time.time() - t_start
+    print(
+        f"[importer] === DONE in {total_elapsed:.1f}s: "
+        f"fetched={len(features)} imported={imported} skipped={skipped} errors={len(errors)} ===",
+        flush=True,
+    )
 
     return {
         "fetched": len(features),
         "imported": imported,
         "skipped": skipped,
-        "errors": errors[:20],  # limit pro UI
+        "errors": errors[:20],
         "importer_pub_hex": keyring.pub_hex[:16] + "…",
+        "elapsed_seconds": round(total_elapsed, 2),
     }

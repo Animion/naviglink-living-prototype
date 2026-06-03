@@ -333,15 +333,18 @@ async def admin_import_brno_waze() -> dict:
     """Manuálně spustit import Waze Alerts z data.brno.cz.
 
     Pro pilot (B.1) bez auth — interní endpoint volaný z admin webu tlačítkem.
-    Pro produkční nasazení by mělo být chráněno (signed request, API klíč,
-    nebo IP whitelist).
-
     Vrátí summary: počty fetched/imported/skipped + errors.
     """
-    result = await importer_brno_waze.import_brno_waze(store)
-    import logging
-    logging.getLogger(__name__).info("Brno Waze import: %s", result)
-    return result
+    print("[app] >>> POST /admin/import/brno-waze RECEIVED", flush=True)
+    try:
+        result = await importer_brno_waze.import_brno_waze(store)
+        print(f"[app] <<< POST /admin/import/brno-waze OK: {result}", flush=True)
+        return result
+    except Exception as e:  # noqa: BLE001
+        import traceback
+        print(f"[app] <<< POST /admin/import/brno-waze FAIL: {e}", flush=True)
+        print(traceback.format_exc(), flush=True)
+        raise
 
 
 @app.get("/admin/import/brno-waze/status")

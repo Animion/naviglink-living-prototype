@@ -1344,10 +1344,14 @@
     result.style.display = 'none';
 
     try {
+      const ctrl = new AbortController();
+      const timeoutId = setTimeout(() => ctrl.abort(), 120000);  // 2 min hard timeout
       const r = await fetch(`${API_HOST}/admin/import/brno-waze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: ctrl.signal,
       });
+      clearTimeout(timeoutId);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
       result.style.display = 'block';
